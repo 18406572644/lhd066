@@ -300,10 +300,40 @@ class TaskQueueManager {
        ORDER BY bi.id DESC LIMIT 10`
     ).all(taskId) as any[]
 
+    function mapTask(t: any) {
+      return {
+        id: t.id,
+        name: t.name,
+        status: t.status,
+        totalCount: t.total_count,
+        successCount: t.success_count,
+        failedCount: t.failed_count,
+        currentIndex: t.current_index,
+        createdAt: t.created_at,
+        startedAt: t.started_at,
+        completedAt: t.completed_at
+      }
+    }
+
+    function mapItem(item: any) {
+      return {
+        id: item.id,
+        templateId: item.template_id,
+        templateName: item.template_name,
+        designImageUrl: item.design_image_url,
+        status: item.status,
+        resultImageUrl: item.result_image_url,
+        errorMessage: item.error_message,
+        historyId: item.history_id,
+        createdAt: item.created_at,
+        completedAt: item.completed_at
+      }
+    }
+
     return {
-      task,
-      currentItem: currentItem || null,
-      recentItems: recentItems.reverse(),
+      task: mapTask(task),
+      currentItem: currentItem ? mapItem(currentItem) : null,
+      recentItems: recentItems.reverse().map(mapItem),
       progress: task.total_count > 0 
         ? Math.round(((task.success_count + task.failed_count) / task.total_count) * 100) 
         : 0

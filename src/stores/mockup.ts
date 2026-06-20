@@ -38,7 +38,13 @@ export const useMockupStore = defineStore('mockup', () => {
   const generating = ref(false)
   const resultUrl = ref<string | null>(null)
   const batchItems = ref<number[]>([])
-  const batchResults = ref<{ templateId: number; status: string; resultUrl?: string }[]>([])
+  const batchResults = ref<{
+    templateId: number
+    status: string
+    resultUrl?: string
+    historyId?: number
+    error?: string
+  }[]>([])
 
   const guides = ref<Guide[]>([])
   const guidesLocked = ref(false)
@@ -202,7 +208,7 @@ export const useMockupStore = defineStore('mockup', () => {
       const fd = new FormData()
       fd.append('image', designFile.value)
       const uploadRes = await upload<{ url: string; width: number; height: number }>('/upload/design-image', fd)
-      const res = await post<{ resultUrl: string }>('/mockup/generate', {
+      const res = await post<{ resultImageUrl: string; historyId: number }>('/mockup/generate', {
         templateId: currentTemplate.value.id,
         designImageUrl: uploadRes.url,
         exportWidth: currentTemplate.value.width * exportSettings.value.width,
@@ -213,7 +219,7 @@ export const useMockupStore = defineStore('mockup', () => {
         scaleX: scale.value.x,
         scaleY: scale.value.y,
       })
-      resultUrl.value = res.resultUrl
+      resultUrl.value = res.resultImageUrl
     } finally {
       generating.value = false
     }
@@ -246,8 +252,32 @@ export const useMockupStore = defineStore('mockup', () => {
           scaleY: scale.value.y,
         }
       })
-      const res = await post<{ results: { templateId: number; status: string; resultUrl?: string }[] }>('/mockup/batch', { items })
-      batchResults.value = res.results
+      const res = await post<{
+        results: Array<{
+          success: boolean
+          error?: string
+          templateId?: number
+          data?: { resultImageUrl: string; historyId: number }
+        }>
+      }>('/mockup/batch', { items })
+
+      batchResults.value = res.results.map(item => {
+        const tplId = item.templateId ?? 0
+        if (item.success && item.data) {
+          return {
+            templateId: tplId,
+            status: 'success',
+            resultUrl: item.data.resultImageUrl,
+            historyId: item.data.historyId,
+          }
+        } else {
+          return {
+            templateId: tplId,
+            status: 'failed',
+            error: item.error,
+          }
+        }
+      })
     } finally {
       generating.value = false
     }
