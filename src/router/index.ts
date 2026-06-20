@@ -27,6 +27,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/TemplateLibrary.vue'),
       },
       {
+        path: 'template/:id',
+        name: 'template-detail',
+        component: () => import('@/pages/TemplateDetailPage.vue'),
+      },
+      {
         path: 'upload',
         name: 'upload',
         component: () => import('@/pages/TemplateUploadPage.vue'),

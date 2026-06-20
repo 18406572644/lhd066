@@ -307,4 +307,350 @@ router.get('/share/:token', async (req: Request, res: Response): Promise<void> =
   }
 })
 
+function mapVersion(raw: any): any {
+  return {
+    id: raw.id,
+    templateId: raw.template_id,
+    versionNumber: raw.version_number,
+    versionLabel: raw.version_label,
+    description: raw.description,
+    name: raw.name,
+    category: raw.category,
+    width: raw.width,
+    height: raw.height,
+    imageUrl: raw.image_url,
+    fitRegion: { x: raw.fit_x, y: raw.fit_y, width: raw.fit_width, height: raw.fit_height },
+    permission: raw.permission,
+    isStable: raw.is_stable === 1,
+    userId: raw.user_id,
+    createdAt: raw.created_at,
+  }
+}
+
+router.get('/:id/versions', optionalAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(req.params.id) as any
+    if (!template) {
+      res.status(404).json({ success: false, error: 'Template not found' })
+      return
+    }
+    if (template.permission !== 'public') {
+      if (!req.user || (req.user.id !== template.user_id && req.user.role !== 'admin')) {
+        res.status(403).json({ success: false, error: 'Access denied' })
+        return
+      }
+    }
+
+    const rows = db.prepare(
+      'SELECT * FROM template_versions WHERE template_id = ? ORDER BY version_number DESC'
+    ).all(req.params.id) as any[]
+
+    res.json({
+      success: true,
+      data: {
+        items: rows.map(mapVersion),
+        total: rows.length,
+      }
+    })
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+router.get('/:id/versions/stable', optionalAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(req.params.id) as any
+    if (!template) {
+      res.status(404).json({ success: false, error: 'Template not found' })
+      return
+    }
+    if (template.permission !== 'public') {
+      if (!req.user || (req.user.id !== template.user_id && req.user.role !== 'admin')) {
+        res.status(403).json({ success: false, error: 'Access denied' })
+        return
+      }
+    }
+
+    const row = db.prepare(
+      'SELECT * FROM template_versions WHERE template_id = ? AND is_stable = 1 ORDER BY version_number DESC LIMIT 1'
+    ).get(req.params.id) as any
+
+    if (!row) {
+      res.status(404).json({ success: false, error: 'Stable version not found' })
+      return
+    }
+
+    const tagRows = db.prepare(
+      'SELECT tg.name FROM template_tags tt JOIN tags tg ON tt.tag_id = tg.id WHERE tt.template_id = ?'
+    ).all(req.params.id) as any[]
+
+    res.json({
+      success: true,
+      data: { ...mapVersion(row), tags: tagRows.map(t => t.name) }
+    })
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+router.get('/:id/versions/:versionId', optionalAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(req.params.id) as any
+    if (!template) {
+      res.status(404).json({ success: false, error: 'Template not found' })
+      return
+    }
+    if (template.permission !== 'public') {
+      if (!req.user || (req.user.id !== template.user_id && req.user.role !== 'admin')) {
+        res.status(403).json({ success: false, error: 'Access denied' })
+        return
+      }
+    }
+
+    const row = db.prepare(
+      'SELECT * FROM template_versions WHERE id = ? AND template_id = ?'
+    ).get(req.params.versionId, req.params.id) as any
+
+    if (!row) {
+      res.status(404).json({ success: false, error: 'Version not found' })
+      return
+    }
+
+    const tagRows = db.prepare(
+      'SELECT tg.name FROM template_tags tt JOIN tags tg ON tt.tag_id = tg.id WHERE tt.template_id = ?'
+    ).all(req.params.id) as any[]
+
+    res.json({
+      success: true,
+      data: { ...mapVersion(row), tags: tagRows.map(t => t.name) }
+    })
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+router.post('/:id/versions', authMiddleware, templateUpload.single('image'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(req.params.id) as any
+    if (!template) {
+      res.status(404).json({ success: false, error: 'Template not found' })
+      return
+    }
+    if (template.user_id !== req.user!.id && req.user!.role !== 'admin') {
+      res.status(403).json({ success: false, error: 'Access denied' })
+      return
+    }
+
+    const { name, category, width, height, fit_x, fit_y, fit_width, fit_height, permission, description } = req.body
+    const imageUrl = req.file ? `/uploads/templates/${req.file.filename}` : template.image_url
+
+    const latestVersion = db.prepare(
+      'SELECT MAX(version_number) as max FROM template_versions WHERE template_id = ?'
+    ).get(req.params.id) as any
+    const nextVersion = (latestVersion?.max || 0) + 1
+    const versionLabel = `v${nextVersion}`
+
+    const tx = db.transaction(() => {
+      const result = db.prepare(
+        `INSERT INTO template_versions
+         (template_id, version_number, version_label, description, name, category, width, height,
+          image_url, fit_x, fit_y, fit_width, fit_height, permission, is_stable, user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`
+      ).run(
+        req.params.id,
+        nextVersion,
+        versionLabel,
+        description || '',
+        name || template.name,
+        category || template.category,
+        width !== undefined ? parseInt(width) || template.width : template.width,
+        height !== undefined ? parseInt(height) || template.height : template.height,
+        imageUrl,
+        fit_x !== undefined ? (parseInt(fit_x) ?? template.fit_x) : template.fit_x,
+        fit_y !== undefined ? (parseInt(fit_y) ?? template.fit_y) : template.fit_y,
+        fit_width !== undefined ? (parseInt(fit_width) ?? template.fit_width) : template.fit_width,
+        fit_height !== undefined ? (parseInt(fit_height) ?? template.fit_height) : template.fit_height,
+        permission || template.permission,
+        req.user!.id
+      )
+
+      const versionId = result.lastInsertRowid
+
+      db.prepare(
+        `UPDATE templates SET name = ?, category = ?, width = ?, height = ?, image_url = ?,
+         fit_x = ?, fit_y = ?, fit_width = ?, fit_height = ?, permission = ? WHERE id = ?`
+      ).run(
+        name || template.name,
+        category || template.category,
+        width !== undefined ? parseInt(width) || template.width : template.width,
+        height !== undefined ? parseInt(height) || template.height : template.height,
+        imageUrl,
+        fit_x !== undefined ? (parseInt(fit_x) ?? template.fit_x) : template.fit_x,
+        fit_y !== undefined ? (parseInt(fit_y) ?? template.fit_y) : template.fit_y,
+        fit_width !== undefined ? (parseInt(fit_width) ?? template.fit_width) : template.fit_width,
+        fit_height !== undefined ? (parseInt(fit_height) ?? template.fit_height) : template.fit_height,
+        permission || template.permission,
+        req.params.id
+      )
+
+      if (req.body.tags !== undefined) {
+        const tagNames = typeof req.body.tags === 'string' ? JSON.parse(req.body.tags) : req.body.tags
+        if (Array.isArray(tagNames)) {
+          db.prepare('DELETE FROM template_tags WHERE template_id = ?').run(req.params.id)
+          const insertTag = db.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)')
+          const findTag = db.prepare('SELECT id FROM tags WHERE name = ?')
+          const linkTag = db.prepare('INSERT INTO template_tags (template_id, tag_id) VALUES (?, ?)')
+          for (const tagName of tagNames) {
+            insertTag.run(tagName)
+            const tagRow = findTag.get(tagName) as any
+            if (tagRow) {
+              linkTag.run(req.params.id, tagRow.id)
+            }
+          }
+        }
+      }
+
+      return versionId
+    })
+
+    const versionId = tx()
+    const version = db.prepare('SELECT * FROM template_versions WHERE id = ?').get(versionId) as any
+
+    res.status(201).json({
+      success: true,
+      data: mapVersion(version)
+    })
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+router.put('/:id/versions/:versionId/stable', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(req.params.id) as any
+    if (!template) {
+      res.status(404).json({ success: false, error: 'Template not found' })
+      return
+    }
+    if (template.user_id !== req.user!.id && req.user!.role !== 'admin') {
+      res.status(403).json({ success: false, error: 'Access denied' })
+      return
+    }
+
+    const version = db.prepare(
+      'SELECT * FROM template_versions WHERE id = ? AND template_id = ?'
+    ).get(req.params.versionId, req.params.id) as any
+    if (!version) {
+      res.status(404).json({ success: false, error: 'Version not found' })
+      return
+    }
+
+    const tx = db.transaction(() => {
+      db.prepare('UPDATE template_versions SET is_stable = 0 WHERE template_id = ?').run(req.params.id)
+      db.prepare('UPDATE template_versions SET is_stable = 1 WHERE id = ?').run(req.params.versionId)
+    })
+    tx()
+
+    const updated = db.prepare('SELECT * FROM template_versions WHERE id = ?').get(req.params.versionId) as any
+    res.json({ success: true, data: mapVersion(updated) })
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+router.post('/:id/versions/:versionId/rollback', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(req.params.id) as any
+    if (!template) {
+      res.status(404).json({ success: false, error: 'Template not found' })
+      return
+    }
+    if (template.user_id !== req.user!.id && req.user!.role !== 'admin') {
+      res.status(403).json({ success: false, error: 'Access denied' })
+      return
+    }
+
+    const version = db.prepare(
+      'SELECT * FROM template_versions WHERE id = ? AND template_id = ?'
+    ).get(req.params.versionId, req.params.id) as any
+    if (!version) {
+      res.status(404).json({ success: false, error: 'Version not found' })
+      return
+    }
+
+    const tx = db.transaction(() => {
+      db.prepare(
+        `UPDATE templates SET name = ?, category = ?, width = ?, height = ?, image_url = ?,
+         fit_x = ?, fit_y = ?, fit_width = ?, fit_height = ?, permission = ? WHERE id = ?`
+      ).run(
+        version.name, version.category, version.width, version.height, version.image_url,
+        version.fit_x, version.fit_y, version.fit_width, version.fit_height,
+        version.permission, req.params.id
+      )
+    })
+    tx()
+
+    const updated = db.prepare('SELECT * FROM templates WHERE id = ?').get(req.params.id) as any
+    const tagRows = db.prepare(
+      'SELECT tg.name FROM template_tags tt JOIN tags tg ON tt.tag_id = tg.id WHERE tt.template_id = ?'
+    ).all(req.params.id) as any[]
+
+    res.json({
+      success: true,
+      data: { ...updated, tags: tagRows.map(t => t.name) }
+    })
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+router.get('/:id/versions/compare/:v1/:v2', optionalAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(req.params.id) as any
+    if (!template) {
+      res.status(404).json({ success: false, error: 'Template not found' })
+      return
+    }
+    if (template.permission !== 'public') {
+      if (!req.user || (req.user.id !== template.user_id && req.user.role !== 'admin')) {
+        res.status(403).json({ success: false, error: 'Access denied' })
+        return
+      }
+    }
+
+    const v1 = db.prepare(
+      'SELECT * FROM template_versions WHERE id = ? AND template_id = ?'
+    ).get(req.params.v1, req.params.id) as any
+    const v2 = db.prepare(
+      'SELECT * FROM template_versions WHERE id = ? AND template_id = ?'
+    ).get(req.params.v2, req.params.id) as any
+
+    if (!v1 || !v2) {
+      res.status(404).json({ success: false, error: 'Version not found' })
+      return
+    }
+
+    const diffs: string[] = []
+    if (v1.name !== v2.name) diffs.push('name')
+    if (v1.category !== v2.category) diffs.push('category')
+    if (v1.width !== v2.width) diffs.push('width')
+    if (v1.height !== v2.height) diffs.push('height')
+    if (v1.image_url !== v2.image_url) diffs.push('image')
+    if (v1.fit_x !== v2.fit_x || v1.fit_y !== v2.fit_y ||
+        v1.fit_width !== v2.fit_width || v1.fit_height !== v2.fit_height) diffs.push('fitRegion')
+    if (v1.permission !== v2.permission) diffs.push('permission')
+
+    res.json({
+      success: true,
+      data: {
+        v1: mapVersion(v1),
+        v2: mapVersion(v2),
+        diffs,
+      }
+    })
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
 export default router

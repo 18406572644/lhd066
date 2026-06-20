@@ -1,7 +1,7 @@
 <template>
   <div class="p-6">
     <div class="flex items-center gap-4 mb-6">
-      <a-tabs :active-key="store.filters.category || 'all'" @change="onCategoryChange" type="rounded">
+      <a-tabs :active-key="templateStore.filters.category || 'all'" @change="onCategoryChange" type="rounded">
         <a-tab-pane key="all" title="全部" />
         <a-tab-pane key="poster" title="海报" />
         <a-tab-pane key="phone" title="手机" />
@@ -10,7 +10,7 @@
       </a-tabs>
       <div class="flex-1" />
       <a-input-search
-        v-model="store.filters.keyword"
+        v-model="templateStore.filters.keyword"
         placeholder="搜索模板..."
         style="width: 240px"
         @search="onSearch"
@@ -18,7 +18,7 @@
       />
     </div>
 
-    <div v-if="store.loading" class="grid grid-cols-3 gap-4">
+    <div v-if="templateStore.loading" class="grid grid-cols-3 gap-4">
       <a-skeleton v-for="i in 6" :key="i" animation>
         <a-skeleton-shape style="width: 100%; height: 200px; border-radius: 12px" />
         <a-skeleton-line :rows="2" />
@@ -27,15 +27,25 @@
 
     <div v-else class="grid grid-cols-3 gap-4">
       <div
-        v-for="tpl in store.templates"
+        v-for="tpl in templateStore.templates"
         :key="tpl.id"
         class="template-card"
-        @click="$router.push(`/generator/${tpl.id}`)"
+        @click="$router.push(`/template/${tpl.id}`)"
       >
         <div class="card-thumb">
           <img :src="tpl.imageUrl" :alt="tpl.name" />
+          <div class="card-badges">
+            <div v-if="getStableVersionLabel(tpl.id)" class="card-stable">
+              <icon-check /> {{ getStableVersionLabel(tpl.id) }}
+            </div>
+          </div>
           <div class="card-overlay">
-            <a-button type="primary" size="small">使用模板</a-button>
+            <a-button type="primary" size="small" @click.stop="$router.push(`/template/${tpl.id}`)">
+              查看详情
+            </a-button>
+            <a-button size="small" status="success" @click.stop="$router.push(`/generator/${tpl.id}`)">
+              立即使用
+            </a-button>
           </div>
         </div>
         <div class="card-info">
@@ -48,15 +58,15 @@
       </div>
     </div>
 
-    <div v-if="!store.loading && store.templates.length === 0" class="py-20">
+    <div v-if="!templateStore.loading && templateStore.templates.length === 0" class="py-20">
       <a-empty description="暂无模板" />
     </div>
 
     <div class="flex justify-center mt-6">
       <a-pagination
-        v-model:current="store.filters.page"
-        :total="store.total"
-        :page-size="store.filters.pageSize"
+        v-model:current="templateStore.filters.page"
+        :total="templateStore.total"
+        :page-size="templateStore.filters.pageSize"
         @change="onPageChange"
         show-total
       />
@@ -65,30 +75,47 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, watch, ref } from 'vue'
 import { useTemplateStore } from '@/stores/template'
 import { getCategoryLabel } from '@/constants'
+import { IconCheck } from '@arco-design/web-vue/es/icon'
 
-const store = useTemplateStore()
+const templateStore = useTemplateStore()
+const stableLabelMap = ref<Record<number, string>>({})
 
-onMounted(() => {
-  store.fetchTemplates()
+onMounted(async () => {
+  await templateStore.fetchTemplates()
 })
 
+watch(() => templateStore.templates, async (tpls) => {
+  const newMap: Record<number, string> = {}
+  for (const tpl of tpls) {
+    try {
+      const stable = await templateStore.fetchStableVersion(tpl.id)
+      if (stable) newMap[tpl.id] = stable.versionLabel
+    } catch {}
+  }
+  stableLabelMap.value = newMap
+}, { immediate: true })
+
+function getStableVersionLabel(id: number) {
+  return stableLabelMap.value[id] || null
+}
+
 function onCategoryChange(key: string) {
-  store.filters.category = key === 'all' ? '' : key
-  store.filters.page = 1
-  store.fetchTemplates()
+  templateStore.filters.category = key === 'all' ? '' : key
+  templateStore.filters.page = 1
+  templateStore.fetchTemplates()
 }
 
 function onSearch() {
-  store.filters.page = 1
-  store.fetchTemplates()
+  templateStore.filters.page = 1
+  templateStore.fetchTemplates()
 }
 
 function onPageChange(page: number) {
-  store.filters.page = page
-  store.fetchTemplates()
+  templateStore.filters.page = page
+  templateStore.fetchTemplates()
 }
 </script>
 
@@ -117,6 +144,26 @@ function onPageChange(page: number) {
   height: 100%;
   object-fit: cover;
 }
+.card-badges {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+.card-stable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 180, 42, 0.92);
+  color: #fff;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
 .card-overlay {
   position: absolute;
   inset: 0;
@@ -124,8 +171,10 @@ function onPageChange(page: number) {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   opacity: 0;
   transition: opacity 0.2s ease;
+  z-index: 3;
 }
 .template-card:hover .card-overlay {
   opacity: 1;

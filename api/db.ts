@@ -127,6 +127,29 @@ CREATE INDEX IF NOT EXISTS idx_batch_task_items_task_id ON batch_task_items(task
 CREATE INDEX IF NOT EXISTS idx_batch_task_items_status ON batch_task_items(status);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
+CREATE TABLE IF NOT EXISTS template_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    version_number INTEGER NOT NULL DEFAULT 1,
+    version_label TEXT NOT NULL,
+    description TEXT,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL CHECK(category IN ('poster', 'phone', 'computer', 'packaging')),
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    image_url TEXT NOT NULL,
+    fit_x INTEGER NOT NULL DEFAULT 0,
+    fit_y INTEGER NOT NULL DEFAULT 0,
+    fit_width INTEGER NOT NULL,
+    fit_height INTEGER NOT NULL,
+    permission TEXT NOT NULL DEFAULT 'public' CHECK(permission IN ('public', 'private', 'restricted')),
+    is_stable INTEGER NOT NULL DEFAULT 0,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_template_versions_template_id ON template_versions(template_id);
+CREATE INDEX IF NOT EXISTS idx_template_versions_version ON template_versions(template_id, version_number);
+CREATE INDEX IF NOT EXISTS idx_template_versions_stable ON template_versions(template_id, is_stable);
 `)
 
 const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@mockup.studio')

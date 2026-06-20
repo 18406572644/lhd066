@@ -18,6 +18,20 @@
           <img :src="tpl.imageUrl" :alt="tpl.name" />
         </div>
       </div>
+
+      <div v-if="mockupStore.currentTemplate" class="mt-4">
+        <div class="section-title">使用版本</div>
+        <VersionSelector
+          :template-id="mockupStore.currentTemplate.id"
+          v-model="selectedVersionId"
+          @select="onSelectVersion"
+        />
+        <div v-if="selectedVersionInfo" class="version-info mt-2">
+          <a-tag v-if="selectedVersionInfo.isStable" color="green" size="small">稳定版</a-tag>
+          <span class="version-info-text">{{ selectedVersionInfo.versionLabel }} · {{ formatDate(selectedVersionInfo.createdAt) }}</span>
+        </div>
+      </div>
+
       <div class="section-title mt-4">设计图</div>
       <a-upload
         :auto-upload="false"
@@ -201,11 +215,11 @@
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMockupStore } from '@/stores/mockup'
-import { useTemplateStore } from '@/stores/template'
-import type { Template } from '@/stores/template'
+import { useTemplateStore, type Template, type TemplateVersion } from '@/stores/template'
 import type { Guide } from '@/stores/mockup'
 import { Message } from '@arco-design/web-vue'
 import type { FileItem } from '@arco-design/web-vue'
+import VersionSelector from '@/components/VersionSelector.vue'
 
 const route = useRoute()
 const mockupStore = useMockupStore()
@@ -215,6 +229,11 @@ const canvasWrapperRef = ref<HTMLDivElement | null>(null)
 const rulerHRef = ref<HTMLDivElement | null>(null)
 const rulerVRef = ref<HTMLDivElement | null>(null)
 const designFileList = ref<FileItem[]>([])
+
+const selectedVersionId = ref<number | null>(null)
+const selectedVersionInfo = computed<TemplateVersion | null>(() =>
+  templateStore.activeVersion ?? (templateStore.versions.find(v => v.id === selectedVersionId.value) || null)
+)
 
 let templateImg: HTMLImageElement | null = null
 let designImg: HTMLImageElement | null = null
@@ -289,6 +308,7 @@ watch(() => mockupStore.designImage, (val) => {
 })
 
 function selectTemplate(tpl: Template) {
+  selectedVersionId.value = null
   mockupStore.currentTemplate = tpl
   mockupStore.offset = { x: 0, y: 0 }
   mockupStore.scale = { x: 1, y: 1 }
@@ -302,6 +322,42 @@ function selectTemplate(tpl: Template) {
     nextTick(() => updateRulers())
   }
   templateImg.src = tpl.imageUrl
+}
+
+function onSelectVersion(v: TemplateVersion) {
+  if (!mockupStore.currentTemplate) return
+  const newTpl: Template = {
+    ...mockupStore.currentTemplate,
+    name: v.name,
+    category: v.category,
+    width: v.width,
+    height: v.height,
+    imageUrl: v.imageUrl,
+    fitRegion: { ...v.fitRegion },
+    permission: v.permission,
+  }
+  mockupStore.currentTemplate = newTpl
+  mockupStore.offset = { x: 0, y: 0 }
+  mockupStore.scale = { x: 1, y: 1 }
+  mockupStore.resultUrl = null
+  mockupStore.activeSnapGuides = []
+  templateImg = new Image()
+  templateImg.crossOrigin = 'anonymous'
+  templateImg.onload = () => {
+    renderCanvas()
+    nextTick(() => updateRulers())
+  }
+  templateImg.src = v.imageUrl
+}
+
+function formatDate(d: string) {
+  const date = new Date(d)
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function updateRulers() {
@@ -871,5 +927,20 @@ function onDownload() {
 }
 .long {
   width: 100%;
+}
+.version-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.version-info-text {
+  font-size: 11px;
+  color: var(--color-text-3);
+}
+.mt-4 {
+  margin-top: 16px;
+}
+.mt-2 {
+  margin-top: 8px;
 }
 </style>

@@ -115,51 +115,72 @@ const seedTemplates = [
 
 function seed() {
   const countRow = db.prepare('SELECT COUNT(*) as count FROM templates').get() as any
-  if (countRow.count > 0) {
-    return
-  }
+  const needSeed = countRow.count === 0
 
   const adminRow = db.prepare('SELECT id FROM users WHERE role = ?').get('admin') as any
   const userId = adminRow?.id || 1
 
-  for (const tpl of seedTemplates) {
-    const srcPath = path.join(seedDir, tpl.image_file)
-    if (!fs.existsSync(srcPath)) continue
+  if (needSeed) {
+    for (const tpl of seedTemplates) {
+      const srcPath = path.join(seedDir, tpl.image_file)
+      if (!fs.existsSync(srcPath)) continue
 
-    const destFilename = `${Date.now()}-seed-${tpl.image_file}`
-    const destPath = path.join(uploadsDir, destFilename)
-    fs.copyFileSync(srcPath, destPath)
+      const destFilename = `${Date.now()}-seed-${tpl.image_file}`
+      const destPath = path.join(uploadsDir, destFilename)
+      fs.copyFileSync(srcPath, destPath)
 
-    const result = db.prepare(
-      `INSERT INTO templates (user_id, name, category, width, height, image_url, fit_x, fit_y, fit_width, fit_height, permission, use_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      userId,
-      tpl.name,
-      tpl.category,
-      tpl.width,
-      tpl.height,
-      `/uploads/templates/${destFilename}`,
-      tpl.fit_x,
-      tpl.fit_y,
-      tpl.fit_width,
-      tpl.fit_height,
-      tpl.permission,
-      tpl.use_count
-    )
+      const result = db.prepare(
+        `INSERT INTO templates (user_id, name, category, width, height, image_url, fit_x, fit_y, fit_width, fit_height, permission, use_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        userId,
+        tpl.name,
+        tpl.category,
+        tpl.width,
+        tpl.height,
+        `/uploads/templates/${destFilename}`,
+        tpl.fit_x,
+        tpl.fit_y,
+        tpl.fit_width,
+        tpl.fit_height,
+        tpl.permission,
+        tpl.use_count
+      )
 
-    const templateId = result.lastInsertRowid
+      const templateId = result.lastInsertRowid
 
-    const insertTag = db.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)')
-    const findTag = db.prepare('SELECT id FROM tags WHERE name = ?')
-    const linkTag = db.prepare('INSERT INTO template_tags (template_id, tag_id) VALUES (?, ?)')
+      const insertTag = db.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)')
+      const findTag = db.prepare('SELECT id FROM tags WHERE name = ?')
+      const linkTag = db.prepare('INSERT INTO template_tags (template_id, tag_id) VALUES (?, ?)')
 
-    for (const tagName of tpl.tags) {
-      insertTag.run(tagName)
-      const tagRow = findTag.get(tagName) as any
-      if (tagRow) {
-        linkTag.run(templateId, tagRow.id)
+      for (const tagName of tpl.tags) {
+        insertTag.run(tagName)
+        const tagRow = findTag.get(tagName) as any
+        if (tagRow) {
+          linkTag.run(templateId, tagRow.id)
+        }
       }
+    }
+  }
+
+  const templates = db.prepare('SELECT * FROM templates').all() as any[]
+  const insertVersion = db.prepare(
+    `INSERT OR IGNORE INTO template_versions
+     (template_id, version_number, version_label, description, name, category, width, height,
+      image_url, fit_x, fit_y, fit_width, fit_height, permission, is_stable, user_id)
+     VALUES (?, 1, 'v1', '初始版本', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
+  )
+  const versionExists = db.prepare(
+    'SELECT id FROM template_versions WHERE template_id = ? AND version_number = 1'
+  )
+  for (const tpl of templates) {
+    const existing = versionExists.get(tpl.id) as any
+    if (!existing) {
+      insertVersion.run(
+        tpl.id, tpl.name, tpl.category, tpl.width, tpl.height,
+        tpl.image_url, tpl.fit_x, tpl.fit_y, tpl.fit_width, tpl.fit_height,
+        tpl.permission, tpl.user_id
+      )
     }
   }
 }
