@@ -68,7 +68,8 @@
           提示：从顶部/左侧标尺拖拽可创建辅助线
         </span>
       </div>
-      <div class="canvas-stage">
+
+      <div class="canvas-stage" ref="canvasStageRef">
         <div class="ruler-corner"></div>
         <div class="ruler ruler-h" ref="rulerHRef">
           <div class="ruler-content">
@@ -85,6 +86,7 @@
             @mousedown="startCreateGuide('horizontal', $event)"
           ></div>
         </div>
+
         <div class="ruler ruler-v" ref="rulerVRef">
           <div class="ruler-content">
             <div
@@ -100,12 +102,14 @@
             @mousedown="startCreateGuide('vertical', $event)"
           ></div>
         </div>
+
         <div
           class="canvas-wrapper checkerboard"
           ref="canvasWrapperRef"
           @mousedown="onCanvasMouseDown"
         >
           <canvas ref="canvasRef" />
+
           <div
             v-for="guide in mockupStore.guides"
             :key="guide.id"
@@ -118,10 +122,23 @@
             }"
             :style="getGuideStyle(guide)"
             @mousedown.stop="startDragGuide(guide, $event)"
-            @dblclick="onGuideDoubleClick(guide.id)"
+            @dblclick.stop="onGuideDoubleClick(guide.id)"
           >
             <div class="guide-dot"></div>
           </div>
+
+          <div
+            v-if="tempGuide"
+            class="guide-line guide-temp"
+            :class="{
+              'guide-horizontal': tempGuide.type === 'horizontal',
+              'guide-vertical': tempGuide.type === 'vertical',
+            }"
+            :style="getTempGuideStyle()"
+          >
+            <div class="guide-dot"></div>
+          </div>
+
           <div
             v-for="guide in mockupStore.activeSnapGuides"
             :key="'snap-'+guide.type+'-'+guide.position"
@@ -134,6 +151,7 @@
           ></div>
         </div>
       </div>
+
       <div v-if="mockupStore.currentTemplate" class="canvas-info">
         {{ mockupStore.currentTemplate.name }} · {{ mockupStore.currentTemplate.width }}×{{ mockupStore.currentTemplate.height }}
       </div>
@@ -228,6 +246,7 @@ const templateStore = useTemplateStore()
 const historyStore = useHistoryStore()
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const canvasWrapperRef = ref<HTMLDivElement | null>(null)
+const canvasStageRef = ref<HTMLDivElement | null>(null)
 const rulerHRef = ref<HTMLDivElement | null>(null)
 const rulerVRef = ref<HTMLDivElement | null>(null)
 const designFileList = ref<FileItem[]>([])
@@ -247,8 +266,13 @@ let dragStartY = 0
 let dragStartOffsetX = 0
 let dragStartOffsetY = 0
 
+interface TempGuideState {
+  type: 'horizontal' | 'vertical'
+  position: number
+}
+
+const tempGuide = ref<TempGuideState | null>(null)
 let isCreatingGuide = false
-let creatingGuideType: 'horizontal' | 'vertical' | null = null
 
 let draggingGuide: Guide | null = null
 const draggingGuideId = ref<string | null>(null)
@@ -281,20 +305,58 @@ const verticalRulerMarks = computed(() => {
   return marks
 })
 
+const TEST_TEMPLATE: Template = {
+  id: 999,
+  name: '测试模板',
+  category: 'poster',
+  description: '用于测试辅助线功能',
+  imageUrl: '',
+  width: 800,
+  height: 600,
+  fitRegion: { x: 100, y: 80, width: 600, height: 440 },
+  tags: ['test'],
+  useCount: 0,
+  permission: 'public',
+  userId: 1,
+  createdAt: '2025-01-01T00:00:00Z',
+  qualityScore: 100,
+  qualityGrade: 'A',
+  reviewStatus: 'auto',
+}
+
 onMounted(async () => {
-  await templateStore.fetchTemplates()
+  window.addEventListener('mousemove', onMouseMove, true)
+  window.addEventListener('mouseup', onMouseUp, true)
+
+  try {
+    await templateStore.fetchTemplates()
+  } catch (e) {
+    console.warn('Template fetch failed, using test template', e)
+  }
+
   const id = route.params.id
   if (id) {
-    const tpl = await templateStore.fetchTemplate(Number(id))
-    if (tpl) selectTemplate(tpl)
+    try {
+      const tpl = await templateStore.fetchTemplate(Number(id))
+      if (tpl) {
+        selectTemplate(tpl)
+        return
+      }
+    } catch (e) {
+      console.warn('Template detail fetch failed', e)
+    }
   }
-  window.addEventListener('mousemove', onMouseMove)
-  window.addEventListener('mouseup', onMouseUp)
+
+  if (templateStore.templates.length > 0) {
+    selectTemplate(templateStore.templates[0])
+  } else {
+    selectTemplate(TEST_TEMPLATE)
+  }
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('mousemove', onMouseMove)
-  window.removeEventListener('mouseup', onMouseUp)
+  window.removeEventListener('mousemove', onMouseMove, true)
+  window.removeEventListener('mouseup', onMouseUp, true)
 })
 
 watch(() => mockupStore.designImage, (val) => {
@@ -317,13 +379,24 @@ function selectTemplate(tpl: Template) {
   mockupStore.resultUrl = null
   mockupStore.activeSnapGuides = []
   mockupStore.loadGuides()
-  templateImg = new Image()
-  templateImg.crossOrigin = 'anonymous'
-  templateImg.onload = () => {
-    renderCanvas()
-    nextTick(() => updateRulers())
+
+  displayScale = Math.min(600 / tpl.width, 450 / tpl.height, 1)
+
+  if (tpl.imageUrl) {
+    templateImg = new Image()
+    templateImg.crossOrigin = 'anonymous'
+    templateImg.onload = () => {
+      renderCanvas()
+      nextTick(() => updateRulers())
+    }
+    templateImg.src = tpl.imageUrl
+  } else {
+    templateImg = null
+    nextTick(() => {
+      renderCanvas()
+      updateRulers()
+    })
   }
-  templateImg.src = tpl.imageUrl
 }
 
 function onSelectVersion(v: TemplateVersion) {
@@ -343,13 +416,24 @@ function onSelectVersion(v: TemplateVersion) {
   mockupStore.scale = { x: 1, y: 1 }
   mockupStore.resultUrl = null
   mockupStore.activeSnapGuides = []
-  templateImg = new Image()
-  templateImg.crossOrigin = 'anonymous'
-  templateImg.onload = () => {
-    renderCanvas()
-    nextTick(() => updateRulers())
+
+  displayScale = Math.min(600 / newTpl.width, 450 / newTpl.height, 1)
+
+  if (v.imageUrl) {
+    templateImg = new Image()
+    templateImg.crossOrigin = 'anonymous'
+    templateImg.onload = () => {
+      renderCanvas()
+      nextTick(() => updateRulers())
+    }
+    templateImg.src = v.imageUrl
+  } else {
+    templateImg = null
+    nextTick(() => {
+      renderCanvas()
+      updateRulers()
+    })
   }
-  templateImg.src = v.imageUrl
 }
 
 function formatDate(d: string) {
@@ -398,6 +482,53 @@ function renderCanvas() {
 
   if (templateImg) {
     ctx.drawImage(templateImg, 0, 0, canvas.width, canvas.height)
+  } else {
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.strokeStyle = '#e5e7eb'
+    ctx.lineWidth = 1
+    ctx.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1)
+    ctx.fillStyle = '#9ca3af'
+    ctx.font = `${14 * displayScale}px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.fillText(tpl.name, canvas.width / 2, 30 * displayScale)
+  }
+
+  if (tpl.fitRegion) {
+    const fit = tpl.fitRegion
+    ctx.save()
+    ctx.strokeStyle = 'rgba(0, 122, 255, 0.6)'
+    ctx.lineWidth = 2
+    ctx.setLineDash([6 * displayScale, 4 * displayScale])
+    ctx.strokeRect(
+      fit.x * displayScale,
+      fit.y * displayScale,
+      fit.width * displayScale,
+      fit.height * displayScale
+    )
+    ctx.setLineDash([])
+    ctx.fillStyle = 'rgba(0, 122, 255, 0.05)'
+    ctx.fillRect(
+      fit.x * displayScale,
+      fit.y * displayScale,
+      fit.width * displayScale,
+      fit.height * displayScale
+    )
+    ctx.restore()
+
+    const centerX = (fit.x + fit.width / 2) * displayScale
+    const centerY = (fit.y + fit.height / 2) * displayScale
+    ctx.save()
+    ctx.strokeStyle = 'rgba(0, 122, 255, 0.3)'
+    ctx.lineWidth = 1
+    ctx.setLineDash([3 * displayScale, 3 * displayScale])
+    ctx.beginPath()
+    ctx.moveTo(centerX, fit.y * displayScale)
+    ctx.lineTo(centerX, (fit.y + fit.height) * displayScale)
+    ctx.moveTo(fit.x * displayScale, centerY)
+    ctx.lineTo((fit.x + fit.width) * displayScale, centerY)
+    ctx.stroke()
+    ctx.restore()
   }
 
   if (designImg && tpl.fitRegion) {
@@ -411,9 +542,9 @@ function renderCanvas() {
 }
 
 function getCanvasPoint(e: MouseEvent) {
-  const canvas = canvasRef.value
-  if (!canvas) return { x: 0, y: 0 }
-  const rect = canvas.getBoundingClientRect()
+  const wrapper = canvasWrapperRef.value
+  if (!wrapper) return { x: 0, y: 0 }
+  const rect = wrapper.getBoundingClientRect()
   return {
     x: (e.clientX - rect.left) / displayScale,
     y: (e.clientY - rect.top) / displayScale,
@@ -422,7 +553,7 @@ function getCanvasPoint(e: MouseEvent) {
 
 function onCanvasMouseDown(e: MouseEvent) {
   if (!designImg || !mockupStore.currentTemplate?.fitRegion) return
-  
+
   const point = getCanvasPoint(e)
   const fit = mockupStore.currentTemplate.fitRegion
   const designX = fit.x + mockupStore.offset.x
@@ -440,14 +571,38 @@ function onCanvasMouseDown(e: MouseEvent) {
     dragStartOffsetX = mockupStore.offset.x
     dragStartOffsetY = mockupStore.offset.y
     e.preventDefault()
+    e.stopPropagation()
   }
 }
 
 function startCreateGuide(type: 'horizontal' | 'vertical', e: MouseEvent) {
   if (mockupStore.guidesLocked) return
+  if (!mockupStore.currentTemplate) return
+
   isCreatingGuide = true
-  creatingGuideType = type
+  const tpl = mockupStore.currentTemplate
+  const maxPos = type === 'horizontal' ? tpl.height : tpl.width
+  const pos = calculateGuidePosition(e, type)
+  const clampedPos = Math.max(0, Math.min(maxPos, pos))
+
+  tempGuide.value = {
+    type,
+    position: clampedPos,
+  }
   e.preventDefault()
+  e.stopPropagation()
+}
+
+function calculateGuidePosition(e: MouseEvent, type: 'horizontal' | 'vertical'): number {
+  const wrapper = canvasWrapperRef.value
+  if (!wrapper) return 0
+  const rect = wrapper.getBoundingClientRect()
+
+  if (type === 'horizontal') {
+    return (e.clientY - rect.top) / displayScale
+  } else {
+    return (e.clientX - rect.left) / displayScale
+  }
 }
 
 function startDragGuide(guide: Guide, e: MouseEvent) {
@@ -457,6 +612,7 @@ function startDragGuide(guide: Guide, e: MouseEvent) {
   dragGuideStartPos = guide.position
   dragGuideMouseStart = guide.type === 'horizontal' ? e.clientY : e.clientX
   e.preventDefault()
+  e.stopPropagation()
 }
 
 function onGuideDoubleClick(id: string) {
@@ -468,7 +624,7 @@ function onMouseMove(e: MouseEvent) {
   if (isDraggingDesign && mockupStore.currentTemplate?.fitRegion) {
     const dx = (e.clientX - dragStartX) / displayScale
     const dy = (e.clientY - dragStartY) / displayScale
-    
+
     let newOffsetX = dragStartOffsetX + dx
     let newOffsetY = dragStartOffsetY + dy
 
@@ -476,7 +632,7 @@ function onMouseMove(e: MouseEvent) {
       const fit = mockupStore.currentTemplate.fitRegion
       const designWidth = fit.width * mockupStore.scale.x
       const designHeight = fit.height * mockupStore.scale.y
-      
+
       const designX = fit.x + newOffsetX
       const designY = fit.y + newOffsetY
 
@@ -498,39 +654,20 @@ function onMouseMove(e: MouseEvent) {
     renderCanvas()
   }
 
-  if (isCreatingGuide && creatingGuideType) {
-    const canvas = canvasRef.value
-    if (!canvas) return
-    const rect = canvas.getBoundingClientRect()
-    
-    let pos = 0
-    if (creatingGuideType === 'horizontal') {
-      pos = (e.clientY - rect.top) / displayScale
-    } else {
-      pos = (e.clientX - rect.left) / displayScale
-    }
-
+  if (isCreatingGuide && tempGuide.value) {
+    const type = tempGuide.value.type
     const tpl = mockupStore.currentTemplate
-    const maxPos = creatingGuideType === 'horizontal' ? (tpl?.height || 0) : (tpl?.width || 0)
-    
-    if (pos >= 0 && pos <= maxPos) {
-      if (!draggingGuide) {
-        mockupStore.addGuide(creatingGuideType, pos)
-        const lastGuide = mockupStore.guides[mockupStore.guides.length - 1]
-        if (lastGuide) {
-          draggingGuide = lastGuide
-          draggingGuideId.value = lastGuide.id
-          dragGuideStartPos = lastGuide.position
-          dragGuideMouseStart = creatingGuideType === 'horizontal' ? e.clientY : e.clientX
-        }
-      }
-    }
+    if (!tpl) return
+    const maxPos = type === 'horizontal' ? tpl.height : tpl.width
+    const rawPos = calculateGuidePosition(e, type)
+    const clampedPos = Math.max(0, Math.min(maxPos, rawPos))
+    tempGuide.value.position = clampedPos
   }
 
-  if (draggingGuide && !isCreatingGuide) {
-    const canvas = canvasRef.value
-    if (!canvas) return
-    
+  if (draggingGuide) {
+    const wrapper = canvasWrapperRef.value
+    if (!wrapper) return
+
     if (draggingGuide.type === 'horizontal') {
       const dy = (e.clientY - dragGuideMouseStart) / displayScale
       const newPos = Math.max(0, Math.min(
@@ -547,15 +684,22 @@ function onMouseMove(e: MouseEvent) {
   }
 }
 
-function onMouseUp() {
+function onMouseUp(e: MouseEvent) {
   if (isDraggingDesign) {
     isDraggingDesign = false
     mockupStore.activeSnapGuides = []
   }
-  if (isCreatingGuide) {
+
+  if (isCreatingGuide && tempGuide.value) {
+    const tpl = mockupStore.currentTemplate
+    if (tpl) {
+      const { type, position } = tempGuide.value
+      mockupStore.addGuide(type, position)
+    }
     isCreatingGuide = false
-    creatingGuideType = null
+    tempGuide.value = null
   }
+
   if (draggingGuide) {
     draggingGuide = null
     draggingGuideId.value = null
@@ -565,18 +709,28 @@ function onMouseUp() {
 function getGuideStyle(guide: Guide) {
   const pos = guide.position * displayScale
   if (guide.type === 'horizontal') {
-    return { top: pos + 'px', left: 0, right: 0 }
+    return { top: pos + 'px', left: '0px', right: '0px' }
   } else {
-    return { left: pos + 'px', top: 0, bottom: 0 }
+    return { left: pos + 'px', top: '0px', bottom: '0px' }
+  }
+}
+
+function getTempGuideStyle() {
+  if (!tempGuide.value) return {}
+  const pos = tempGuide.value.position * displayScale
+  if (tempGuide.value.type === 'horizontal') {
+    return { top: pos + 'px', left: '0px', right: '0px' }
+  } else {
+    return { left: pos + 'px', top: '0px', bottom: '0px' }
   }
 }
 
 function getSnapGuideStyle(guide: { type: 'horizontal' | 'vertical'; position: number }) {
   const pos = guide.position * displayScale
   if (guide.type === 'horizontal') {
-    return { top: pos + 'px', left: 0, right: 0 }
+    return { top: pos + 'px', left: '0px', right: '0px' }
   } else {
-    return { left: pos + 'px', top: 0, bottom: 0 }
+    return { left: pos + 'px', top: '0px', bottom: '0px' }
   }
 }
 
@@ -618,9 +772,8 @@ function onDownload() {
   overflow-y: auto;
 }
 .generator-center {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: 0;
+  flex: 1 1 0;
+  min-width: 400px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -636,11 +789,12 @@ function onDownload() {
   margin-bottom: 12px;
   width: 100%;
   max-width: 700px;
+  flex-wrap: wrap;
 }
 .canvas-toolbar-hint {
   font-size: 12px;
   color: var(--color-text-3);
-  margin-left: 8px;
+  margin-left: auto;
 }
 .canvas-stage {
   position: relative;
@@ -662,7 +816,7 @@ function onDownload() {
   border: 1px solid var(--color-border);
   position: relative;
   user-select: none;
-  overflow: hidden;
+  overflow: visible;
 }
 .ruler-h {
   grid-column: 2;
@@ -680,6 +834,7 @@ function onDownload() {
   position: relative;
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 .ruler-drag-area {
   position: absolute;
@@ -687,8 +842,11 @@ function onDownload() {
   left: 0;
   right: 0;
   bottom: 0;
-  cursor: crosshair;
-  z-index: 2;
+  cursor: ns-resize;
+  z-index: 10;
+}
+.ruler-v .ruler-drag-area {
+  cursor: ew-resize;
 }
 .ruler-tick {
   position: absolute;
@@ -734,12 +892,11 @@ function onDownload() {
   border-radius: 0 0 var(--radius-sm) 0;
   overflow: visible;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  display: inline-block;
+  display: block;
   position: relative;
   cursor: default;
   border: 1px solid var(--color-border);
-  border-left: none;
-  border-top: none;
+  background: #fff;
 }
 .canvas-wrapper canvas {
   display: block;
@@ -749,6 +906,7 @@ function onDownload() {
   background: #ff00ff;
   z-index: 10;
   cursor: move;
+  pointer-events: auto;
 }
 .guide-line.guide-horizontal {
   height: 1px;
@@ -762,6 +920,13 @@ function onDownload() {
 .guide-line.guide-active {
   background: #ff3bff;
   box-shadow: 0 0 6px rgba(255, 0, 255, 0.7);
+}
+.guide-line.guide-temp {
+  background: rgba(255, 0, 255, 0.6);
+  border-style: dashed;
+  cursor: none;
+  pointer-events: none;
+  z-index: 20;
 }
 .guide-dot {
   position: absolute;
@@ -779,6 +944,9 @@ function onDownload() {
 .guide-vertical .guide-dot {
   top: -5px;
   left: -5px;
+}
+.guide-temp .guide-dot {
+  background: rgba(255, 0, 255, 0.6);
 }
 .snap-line {
   position: absolute;
