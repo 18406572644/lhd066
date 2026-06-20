@@ -51,6 +51,12 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresAuth: true },
       },
       {
+        path: 'batch/history',
+        name: 'batch-history',
+        component: () => import('@/pages/BatchHistoryPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
         path: 'history',
         name: 'history',
         component: () => import('@/pages/HistoryPage.vue'),

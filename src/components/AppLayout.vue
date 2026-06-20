@@ -26,6 +26,7 @@
           <a-breadcrumb-item v-for="(item, i) in breadcrumbs" :key="i">{{ item }}</a-breadcrumb-item>
         </a-breadcrumb>
         <div class="flex-1" />
+        <NotificationCenter />
         <slot name="toolbar-actions" />
       </div>
       <div class="canvas-area">
@@ -45,6 +46,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { LayoutGrid, Plus, Wand2, Layers, Clock, BarChart3, Settings, User } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import SidebarIcon from './SidebarIcon.vue'
+import NotificationCenter from './NotificationCenter.vue'
 
 const LogoIcon = () => h('span', { style: 'font-weight:700;font-size:18px;color:#007AFF;' }, 'M')
 
@@ -59,6 +61,7 @@ const breadcrumbs = computed(() => {
     generator: ['样机生成'],
     'generator-with-template': ['样机生成'],
     batch: ['批量生成'],
+    'batch-history': ['批量生成', '任务历史'],
     history: ['历史记录'],
     stats: ['数据统计'],
   }

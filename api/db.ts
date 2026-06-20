@@ -79,6 +79,54 @@ CREATE INDEX IF NOT EXISTS idx_history_user_id ON history(user_id);
 CREATE INDEX IF NOT EXISTS idx_history_template_id ON history(template_id);
 CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+CREATE TABLE IF NOT EXISTS batch_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'running', 'paused', 'cancelled', 'completed', 'failed')),
+    total_count INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    current_index INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    started_at TEXT,
+    completed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS batch_task_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES batch_tasks(id) ON DELETE CASCADE,
+    template_id INTEGER NOT NULL REFERENCES templates(id),
+    design_image_url TEXT NOT NULL,
+    export_width INTEGER NOT NULL,
+    export_height INTEGER NOT NULL,
+    export_format TEXT NOT NULL DEFAULT 'png',
+    offset_x INTEGER NOT NULL DEFAULT 0,
+    offset_y INTEGER NOT NULL DEFAULT 0,
+    scale_x REAL NOT NULL DEFAULT 1.0,
+    scale_y REAL NOT NULL DEFAULT 1.0,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'success', 'failed', 'skipped')),
+    result_image_url TEXT,
+    error_message TEXT,
+    history_id INTEGER REFERENCES history(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    type TEXT NOT NULL DEFAULT 'info' CHECK(type IN ('info', 'success', 'warning', 'error')),
+    title TEXT NOT NULL,
+    content TEXT,
+    task_id INTEGER REFERENCES batch_tasks(id),
+    is_read INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_batch_tasks_user_id ON batch_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_batch_tasks_status ON batch_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_batch_task_items_task_id ON batch_task_items(task_id);
+CREATE INDEX IF NOT EXISTS idx_batch_task_items_status ON batch_task_items(status);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 `)
 
 const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@mockup.studio')

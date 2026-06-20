@@ -15,6 +15,8 @@ import mockupRoutes from './routes/mockup.js'
 import historyRoutes from './routes/history.js'
 import statsRoutes from './routes/stats.js'
 import uploadRoutes from './routes/upload.js'
+import batchTaskRoutes from './routes/batch-tasks.js'
+import notificationRoutes from './routes/notifications.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -35,6 +37,8 @@ app.use('/api/mockup', mockupRoutes)
 app.use('/api/history', historyRoutes)
 app.use('/api/stats', statsRoutes)
 app.use('/api/upload', uploadRoutes)
+app.use('/api/batch-tasks', batchTaskRoutes)
+app.use('/api/notifications', notificationRoutes)
 
 app.use(
   '/api/health',
