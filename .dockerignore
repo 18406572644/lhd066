@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.gitignore
+.vscode
+.trae
+data
+uploads
+*.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+npm-debug.log
+.env
+.env.local
