@@ -2,6 +2,16 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { get, post, put, del } from '@/utils/api'
 
+export interface FitRegion {
+  id?: number
+  name: string
+  x: number
+  y: number
+  width: number
+  height: number
+  sortOrder: number
+}
+
 export interface Template {
   id: number
   name: string
@@ -11,6 +21,7 @@ export interface Template {
   width: number
   height: number
   fitRegion: { x: number; y: number; width: number; height: number }
+  fitRegions: FitRegion[]
   tags: string[]
   useCount: number
   permission: string
@@ -33,6 +44,7 @@ export interface TemplateVersion {
   height: number
   imageUrl: string
   fitRegion: { x: number; y: number; width: number; height: number }
+  fitRegions: FitRegion[]
   permission: string
   isStable: boolean
   userId: number
@@ -52,6 +64,28 @@ interface TemplateListRes {
 }
 
 function mapTemplate(raw: any): Template {
+  const primaryFit = { x: raw.fit_x, y: raw.fit_y, width: raw.fit_width, height: raw.fit_height }
+  let fitRegions: FitRegion[] = []
+  if (raw.fitRegions && Array.isArray(raw.fitRegions) && raw.fitRegions.length > 0) {
+    fitRegions = raw.fitRegions.map((fr: any, idx: number) => ({
+      id: fr.id,
+      name: fr.name || `区域${idx + 1}`,
+      x: fr.x ?? fr.fit_x ?? 0,
+      y: fr.y ?? fr.fit_y ?? 0,
+      width: fr.width ?? fr.fit_width ?? 0,
+      height: fr.height ?? fr.fit_height ?? 0,
+      sortOrder: fr.sortOrder ?? fr.sort_order ?? idx,
+    }))
+  } else {
+    fitRegions = [{
+      name: '默认区域',
+      x: primaryFit.x,
+      y: primaryFit.y,
+      width: primaryFit.width,
+      height: primaryFit.height,
+      sortOrder: 0,
+    }]
+  }
   return {
     id: raw.id,
     name: raw.name,
@@ -60,7 +94,8 @@ function mapTemplate(raw: any): Template {
     imageUrl: raw.image_url,
     width: raw.width,
     height: raw.height,
-    fitRegion: { x: raw.fit_x, y: raw.fit_y, width: raw.fit_width, height: raw.fit_height },
+    fitRegion: primaryFit,
+    fitRegions,
     tags: raw.tags,
     useCount: raw.use_count,
     permission: raw.permission,
@@ -73,6 +108,28 @@ function mapTemplate(raw: any): Template {
 }
 
 function mapVersion(raw: any): TemplateVersion {
+  const primaryFit = raw.fitRegion ?? { x: raw.fit_x, y: raw.fit_y, width: raw.fit_width, height: raw.fit_height }
+  let fitRegions: FitRegion[] = []
+  if (raw.fitRegions && Array.isArray(raw.fitRegions) && raw.fitRegions.length > 0) {
+    fitRegions = raw.fitRegions.map((fr: any, idx: number) => ({
+      id: fr.id,
+      name: fr.name || `区域${idx + 1}`,
+      x: fr.x ?? fr.fit_x ?? 0,
+      y: fr.y ?? fr.fit_y ?? 0,
+      width: fr.width ?? fr.fit_width ?? 0,
+      height: fr.height ?? fr.fit_height ?? 0,
+      sortOrder: fr.sortOrder ?? fr.sort_order ?? idx,
+    }))
+  } else {
+    fitRegions = [{
+      name: '默认区域',
+      x: primaryFit.x,
+      y: primaryFit.y,
+      width: primaryFit.width,
+      height: primaryFit.height,
+      sortOrder: 0,
+    }]
+  }
   return {
     id: raw.id,
     templateId: raw.templateId ?? raw.template_id,
@@ -84,7 +141,8 @@ function mapVersion(raw: any): TemplateVersion {
     width: raw.width,
     height: raw.height,
     imageUrl: raw.imageUrl ?? raw.image_url,
-    fitRegion: raw.fitRegion ?? { x: raw.fit_x, y: raw.fit_y, width: raw.fit_width, height: raw.fit_height },
+    fitRegion: primaryFit,
+    fitRegions,
     permission: raw.permission,
     isStable: raw.isStable ?? raw.is_stable === 1,
     userId: raw.userId ?? raw.user_id,
@@ -111,6 +169,7 @@ export const useTemplateStore = defineStore('template', () => {
   const activeVersion = ref<TemplateVersion | null>(null)
   const stableVersion = ref<TemplateVersion | null>(null)
   const compareResult = ref<VersionCompareResult | null>(null)
+  const selectedFitRegionIndex = ref(0)
 
   async function fetchTemplates() {
     loading.value = true
@@ -198,6 +257,19 @@ export const useTemplateStore = defineStore('template', () => {
     return newVersion
   }
 
+  async function updateVersion(templateId: number, versionId: number, data: Record<string, unknown>) {
+    const res = await put<any>(`/templates/${templateId}/versions/${versionId}`, data)
+    const updated = mapVersion(res)
+    versions.value = versions.value.map(v => v.id === versionId ? updated : v)
+    if (activeVersion.value?.id === versionId) {
+      activeVersion.value = updated
+    }
+    if (updated.isStable) {
+      stableVersion.value = updated
+    }
+    return updated
+  }
+
   async function setStableVersion(templateId: number, versionId: number) {
     const res = await put<any>(`/templates/${templateId}/versions/${versionId}/stable`, {})
     const updated = mapVersion(res)
@@ -243,8 +315,9 @@ export const useTemplateStore = defineStore('template', () => {
   return {
     templates, currentTemplate, total, loading, filters,
     versions, versionsLoading, activeVersion, stableVersion, compareResult,
+    selectedFitRegionIndex,
     fetchTemplates, fetchTemplate, createTemplate, updateTemplate, deleteTemplate, shareTemplate,
-    fetchVersions, fetchVersion, fetchStableVersion, createVersion,
+    fetchVersions, fetchVersion, fetchStableVersion, createVersion, updateVersion,
     setStableVersion, rollbackToVersion, compareVersions, clearCompareResult, resetVersionsState,
   }
 })

@@ -66,7 +66,8 @@
       <a-steps :current="currentStep" changeable @change="currentStep = $event" class="mb-8">
         <a-step description="基本信息">基本信息</a-step>
         <a-step description="尺寸与图片">尺寸与图片</a-step>
-        <a-step description="适配区域与标签">适配区域与标签</a-step>
+        <a-step description="模板信息与贴合">模板信息与贴合</a-step>
+        <a-step description="提交">提交</a-step>
       </a-steps>
 
       <div class="step-content">
@@ -126,64 +127,104 @@
 
         <div v-if="currentStep === 3">
           <a-form :model="form" layout="vertical">
-            <div class="fit-region-grid">
-              <a-form-item label="X">
-                <a-input-number v-model="form.fitX" :min="0" />
+            <a-steps :current="editStep" changeable @change="editStep = $event" class="mb-6">
+              <a-step description="基本信息">基本信息</a-step>
+              <a-step description="贴合区域">贴合区域</a-step>
+            </a-steps>
+
+            <div v-if="editStep === 1">
+              <a-form-item label="模板名称" required>
+                <a-input v-model="form.name" placeholder="输入模板名称" />
               </a-form-item>
-              <a-form-item label="Y">
-                <a-input-number v-model="form.fitY" :min="0" />
+              <a-form-item label="分类" required>
+                <a-select v-model="form.category" placeholder="选择分类">
+                  <a-option value="poster">海报</a-option>
+                  <a-option value="phone">手机</a-option>
+                  <a-option value="computer">电脑</a-option>
+                  <a-option value="packaging">包装</a-option>
+                </a-select>
               </a-form-item>
-              <a-form-item label="宽度">
-                <a-input-number v-model="form.fitWidth" :min="10" />
+              <a-form-item label="描述">
+                <a-textarea v-model="form.description" placeholder="模板描述（建议10字以上）" :auto-size="{ minRows: 3 }" />
               </a-form-item>
-              <a-form-item label="高度">
-                <a-input-number v-model="form.fitHeight" :min="10" />
+              <a-form-item label="标签（建议≥3个）">
+                <a-input-tag v-model="form.tags" placeholder="添加标签后按回车" />
               </a-form-item>
+              <a-form-item label="权限">
+                <a-radio-group v-model="form.permission">
+                  <a-radio value="public">公开</a-radio>
+                  <a-radio value="private">私有</a-radio>
+                </a-radio-group>
+              </a-form-item>
+              <div class="flex justify-end mt-4">
+                <a-button type="primary" @click="editStep = 2">下一步：配置贴合区域</a-button>
+              </div>
             </div>
-            <div
-              v-if="imagePreview"
-              class="fit-preview"
-            >
-              <img :src="imagePreview" alt="preview" />
-              <div
-                class="fit-region-box"
-                :style="{
-                  left: (form.fitX / form.width * 100) + '%',
-                  top: (form.fitY / form.height * 100) + '%',
-                  width: (form.fitWidth / form.width * 100) + '%',
-                  height: (form.fitHeight / form.height * 100) + '%',
-                }"
-              />
+
+            <div v-if="editStep === 2">
+              <div v-if="imagePreview" class="mt-4">
+                <FitRegionEditor
+                  v-model="form.fitRegions"
+                  :image-url="imagePreview"
+                  :template-width="form.width"
+                  :template-height="form.height"
+                />
+              </div>
+              <div v-else class="fit-preview-empty">
+                请先在第二步上传模板图片
+              </div>
+              <div class="flex justify-between mt-4">
+                <a-button @click="editStep = 1">上一步</a-button>
+                <a-button type="primary" @click="onCheckForm">完成配置</a-button>
+              </div>
             </div>
-            <a-form-item label="标签（建议≥3个）" class="mt-4">
-              <a-input-tag v-model="form.tags" placeholder="添加标签后按回车" />
-            </a-form-item>
-            <a-form-item label="权限">
-              <a-radio-group v-model="form.permission">
-                <a-radio value="public">公开</a-radio>
-                <a-radio value="private">私有</a-radio>
-              </a-radio-group>
-            </a-form-item>
           </a-form>
+        </div>
+
+        <div v-if="currentStep === 4">
+          <div class="submit-preview">
+            <div class="section-title">提交前预览</div>
+            <a-descriptions :column="2" bordered size="small">
+              <a-descriptions-item label="模板名称">{{ form.name }}</a-descriptions-item>
+              <a-descriptions-item label="分类">{{ getCategoryLabel(form.category) }}</a-descriptions-item>
+              <a-descriptions-item label="尺寸">{{ form.width }} × {{ form.height }}</a-descriptions-item>
+              <a-descriptions-item label="权限">{{ form.permission === 'public' ? '公开' : '私有' }}</a-descriptions-item>
+              <a-descriptions-item label="标签" :span="2">
+                <a-tag v-for="tag in form.tags" :key="tag" color="arcoblue" size="small">{{ tag }}</a-tag>
+                <span v-if="form.tags.length === 0" class="text-secondary">未设置</span>
+              </a-descriptions-item>
+              <a-descriptions-item label="贴合区域数量" :span="2">
+                {{ form.fitRegions.length }} 个
+              </a-descriptions-item>
+            </a-descriptions>
+            <div v-if="imagePreview" class="preview-image mt-4">
+              <div class="section-title mb-2">模板图片预览</div>
+              <img :src="imagePreview" alt="preview" />
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="flex justify-between mt-6">
+      <div class="flex justify-between mt-6" v-if="currentStep < 3">
         <a-button v-if="currentStep > 1" @click="currentStep--">上一步</a-button>
         <div v-else />
-        <a-button v-if="currentStep < 3" type="primary" @click="currentStep++">下一步</a-button>
-        <a-button v-else type="primary" :loading="submitting" @click="onSubmit">提交模板</a-button>
+        <a-button type="primary" @click="currentStep++">下一步</a-button>
+      </div>
+      <div class="flex justify-between mt-6" v-if="currentStep >= 4">
+        <a-button @click="currentStep = 3">返回编辑</a-button>
+        <a-button type="primary" :loading="submitting" @click="onSubmit">提交模板</a-button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useTemplateStore } from '@/stores/template'
+import { useTemplateStore, type FitRegion } from '@/stores/template'
 import { Message } from '@arco-design/web-vue'
 import type { FileItem } from '@arco-design/web-vue'
+import FitRegionEditor from '@/components/FitRegionEditor.vue'
 
 interface QualityReport {
   fitRegionScore: number
@@ -200,6 +241,7 @@ interface QualityReport {
 const router = useRouter()
 const store = useTemplateStore()
 const currentStep = ref(1)
+const editStep = ref(1)
 const submitting = ref(false)
 const fileList = ref<FileItem[]>([])
 const imagePreview = ref<string | null>(null)
@@ -215,6 +257,15 @@ const sizePresets = [
   { label: '1440×900', w: 1440, h: 900 },
 ]
 
+const defaultFitRegions = (): FitRegion[] => [{
+  name: '默认区域',
+  x: 100,
+  y: 200,
+  width: 880,
+  height: 1400,
+  sortOrder: 0,
+}]
+
 const form = reactive({
   name: '',
   category: '',
@@ -225,9 +276,29 @@ const form = reactive({
   fitY: 200,
   fitWidth: 880,
   fitHeight: 1400,
+  fitRegions: defaultFitRegions(),
   tags: [] as string[],
   permission: 'public',
 })
+
+watch(() => form.fitRegions, (regions) => {
+  if (regions.length > 0) {
+    form.fitX = Math.round(regions[0].x)
+    form.fitY = Math.round(regions[0].y)
+    form.fitWidth = Math.round(regions[0].width)
+    form.fitHeight = Math.round(regions[0].height)
+  }
+}, { deep: true })
+
+function getCategoryLabel(cat: string): string {
+  const map: Record<string, string> = {
+    poster: '海报',
+    phone: '手机',
+    computer: '电脑',
+    packaging: '包装',
+  }
+  return map[cat] || cat
+}
 
 function getScoreColor(score: number): string {
   if (score >= 90) return '#00b42a'
@@ -251,6 +322,14 @@ function onImageChange(fileItemList: FileItem[]) {
   }
 }
 
+function onCheckForm() {
+  if (form.fitRegions.length === 0) {
+    Message.warning('请至少配置一个贴合区域')
+    return
+  }
+  currentStep.value = 4
+}
+
 async function onSubmit() {
   if (!form.name || !form.category) {
     Message.warning('请填写必要信息')
@@ -258,6 +337,10 @@ async function onSubmit() {
   }
   if (!imageFile.value) {
     Message.warning('请上传模板图片')
+    return
+  }
+  if (form.fitRegions.length === 0) {
+    Message.warning('请至少配置一个贴合区域')
     return
   }
   submitting.value = true
@@ -272,6 +355,7 @@ async function onSubmit() {
     fd.append('fit_y', String(form.fitY))
     fd.append('fit_width', String(form.fitWidth))
     fd.append('fit_height', String(form.fitHeight))
+    fd.append('fitRegions', JSON.stringify(form.fitRegions))
     fd.append('tags', JSON.stringify(form.tags))
     fd.append('permission', form.permission)
     fd.append('image', imageFile.value)
@@ -302,12 +386,14 @@ function resetForm() {
   form.fitY = 200
   form.fitWidth = 880
   form.fitHeight = 1400
+  form.fitRegions = defaultFitRegions()
   form.tags = []
   form.permission = 'public'
   fileList.value = []
   imageFile.value = null
   imagePreview.value = null
   currentStep.value = 1
+  editStep.value = 1
 }
 
 function viewDetail() {

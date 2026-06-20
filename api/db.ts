@@ -161,6 +161,22 @@ CREATE TABLE IF NOT EXISTS template_versions (
     user_id INTEGER NOT NULL REFERENCES users(id),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS template_fit_regions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER REFERENCES templates(id) ON DELETE CASCADE,
+    version_id INTEGER REFERENCES template_versions(id) ON DELETE CASCADE,
+    name TEXT NOT NULL DEFAULT '默认区域',
+    fit_x INTEGER NOT NULL DEFAULT 0,
+    fit_y INTEGER NOT NULL DEFAULT 0,
+    fit_width INTEGER NOT NULL,
+    fit_height INTEGER NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK(template_id IS NOT NULL OR version_id IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_template_fit_regions_template ON template_fit_regions(template_id);
+CREATE INDEX IF NOT EXISTS idx_template_fit_regions_version ON template_fit_regions(version_id);
+CREATE INDEX IF NOT EXISTS idx_template_fit_regions_sort ON template_fit_regions(sort_order);
 CREATE INDEX IF NOT EXISTS idx_template_versions_template_id ON template_versions(template_id);
 CREATE INDEX IF NOT EXISTS idx_template_versions_version ON template_versions(template_id, version_number);
 CREATE INDEX IF NOT EXISTS idx_template_versions_stable ON template_versions(template_id, is_stable);
@@ -259,6 +275,37 @@ for (const m of migrateColumns) {
   const exists = db.prepare(`SELECT COUNT(*) as cnt FROM pragma_table_info('${m.table}') WHERE name='${m.column}'`).get() as any
   if (exists.cnt === 0) {
     db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.def}`)
+  }
+}
+
+const migrationKey = 'fit_regions_migrated'
+const migrationExists = db.prepare(`SELECT COUNT(*) as cnt FROM pragma_table_info('migrations') WHERE name='key'`).get() as any
+if (migrationExists.cnt === 0) {
+  db.exec(`CREATE TABLE IF NOT EXISTS migrations (key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))`)
+}
+
+const migrationDone = db.prepare(`SELECT COUNT(*) as cnt FROM migrations WHERE key = ?`).get(migrationKey) as any
+if (migrationDone.cnt === 0) {
+  const tx = db.transaction(() => {
+    const templates = db.prepare(`SELECT id, fit_x, fit_y, fit_width, fit_height FROM templates`).all() as any[]
+    const insertTemplateFit = db.prepare(`INSERT INTO template_fit_regions (template_id, name, fit_x, fit_y, fit_width, fit_height, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    for (const tpl of templates) {
+      insertTemplateFit.run(tpl.id, '默认区域', tpl.fit_x, tpl.fit_y, tpl.fit_width, tpl.fit_height, 0)
+    }
+
+    const versions = db.prepare(`SELECT id, fit_x, fit_y, fit_width, fit_height FROM template_versions`).all() as any[]
+    const insertVersionFit = db.prepare(`INSERT INTO template_fit_regions (version_id, name, fit_x, fit_y, fit_width, fit_height, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    for (const v of versions) {
+      insertVersionFit.run(v.id, '默认区域', v.fit_x, v.fit_y, v.fit_width, v.fit_height, 0)
+    }
+
+    db.prepare(`INSERT INTO migrations (key) VALUES (?)`).run(migrationKey)
+  })
+  try {
+    tx()
+    console.log('Fit regions data migration completed')
+  } catch (e) {
+    console.error('Fit regions migration failed:', e)
   }
 }
 

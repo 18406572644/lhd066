@@ -32,6 +32,23 @@
         </div>
       </div>
 
+      <div v-if="availableFitRegions.length > 1" class="mt-4">
+        <div class="section-title">贴合区域</div>
+        <a-select
+          v-model="selectedFitRegionIndex"
+          style="width: 100%"
+          @change="renderCanvas"
+        >
+          <a-option v-for="(region, idx) in availableFitRegions" :key="idx" :value="idx">
+            {{ region.name || `区域${idx + 1}` }} ({{ Math.round(region.width) }}×{{ Math.round(region.height) }})
+          </a-option>
+        </a-select>
+        <div v-if="activeFitRegion" class="region-info mt-2 text-sm text-secondary">
+          位置: ({{ Math.round(activeFitRegion.x) }}, {{ Math.round(activeFitRegion.y) }}) · 
+          尺寸: {{ Math.round(activeFitRegion.width) }}×{{ Math.round(activeFitRegion.height) }}
+        </div>
+      </div>
+
       <div class="section-title mt-4">设计图</div>
       <a-upload
         :auto-upload="false"
@@ -355,6 +372,30 @@ const selectedVersionId = ref<number | null>(null)
 const selectedVersionInfo = computed<TemplateVersion | null>(() =>
   templateStore.activeVersion ?? (templateStore.versions.find(v => v.id === selectedVersionId.value) || null)
 )
+const selectedFitRegionIndex = ref(0)
+
+const availableFitRegions = computed(() => {
+  const tpl = mockupStore.currentTemplate
+  if (!tpl) return []
+  if (tpl.fitRegions && tpl.fitRegions.length > 0) return tpl.fitRegions
+  if (tpl.fitRegion) {
+    return [{
+      name: '默认区域',
+      x: tpl.fitRegion.x,
+      y: tpl.fitRegion.y,
+      width: tpl.fitRegion.width,
+      height: tpl.fitRegion.height,
+      sortOrder: 0,
+    }]
+  }
+  return []
+})
+
+const activeFitRegion = computed(() => {
+  const regions = availableFitRegions.value
+  if (regions.length === 0) return null
+  return regions[Math.min(selectedFitRegionIndex.value, regions.length - 1)] || null
+})
 
 let templateImg: HTMLImageElement | null = null
 let designImg: HTMLImageElement | null = null
@@ -414,6 +455,9 @@ const TEST_TEMPLATE: Template = {
   width: 800,
   height: 600,
   fitRegion: { x: 100, y: 80, width: 600, height: 440 },
+  fitRegions: [
+    { name: '默认区域', x: 100, y: 80, width: 600, height: 440, sortOrder: 0 },
+  ],
   tags: ['test'],
   useCount: 0,
   permission: 'public',
@@ -474,6 +518,8 @@ watch(() => mockupStore.designImage, (val) => {
 function selectTemplate(tpl: Template) {
   selectedVersionId.value = null
   mockupStore.currentTemplate = tpl
+  selectedFitRegionIndex.value = templateStore.selectedFitRegionIndex || 0
+  templateStore.selectedFitRegionIndex = 0
   mockupStore.offset = { x: 0, y: 0 }
   mockupStore.scale = { x: 1, y: 1 }
   mockupStore.resultUrl = null
@@ -509,9 +555,11 @@ function onSelectVersion(v: TemplateVersion) {
     height: v.height,
     imageUrl: v.imageUrl,
     fitRegion: { ...v.fitRegion },
+    fitRegions: v.fitRegions ? [...v.fitRegions] : undefined,
     permission: v.permission,
   }
   mockupStore.currentTemplate = newTpl
+  selectedFitRegionIndex.value = 0
   mockupStore.offset = { x: 0, y: 0 }
   mockupStore.scale = { x: 1, y: 1 }
   mockupStore.resultUrl = null
@@ -677,8 +725,8 @@ function renderCanvas() {
     ctx.fillText(tpl.name, canvas.width / 2, 30 * displayScale)
   }
 
-  if (tpl.fitRegion) {
-    const fit = tpl.fitRegion
+  if (activeFitRegion.value) {
+    const fit = activeFitRegion.value
     ctx.save()
     ctx.strokeStyle = 'rgba(0, 122, 255, 0.6)'
     ctx.lineWidth = 2
@@ -714,8 +762,8 @@ function renderCanvas() {
     ctx.restore()
   }
 
-  if (designImg && tpl.fitRegion) {
-    const fit = tpl.fitRegion
+  if (designImg && activeFitRegion.value) {
+    const fit = activeFitRegion.value
     const dx = (fit.x + mockupStore.offset.x) * displayScale
     const dy = (fit.y + mockupStore.offset.y) * displayScale
     const dw = fit.width * mockupStore.scale.x * displayScale
@@ -735,10 +783,10 @@ function getCanvasPoint(e: MouseEvent) {
 }
 
 function onCanvasMouseDown(e: MouseEvent) {
-  if (!designImg || !mockupStore.currentTemplate?.fitRegion) return
+  if (!designImg || !activeFitRegion.value) return
 
   const point = getCanvasPoint(e)
-  const fit = mockupStore.currentTemplate.fitRegion
+  const fit = activeFitRegion.value
   const designX = fit.x + mockupStore.offset.x
   const designY = fit.y + mockupStore.offset.y
   const designW = fit.width * mockupStore.scale.x
@@ -804,15 +852,15 @@ function onGuideDoubleClick(id: string) {
 }
 
 function onMouseMove(e: MouseEvent) {
-  if (isDraggingDesign && mockupStore.currentTemplate?.fitRegion) {
+  if (isDraggingDesign && activeFitRegion.value) {
     const dx = (e.clientX - dragStartX) / displayScale
     const dy = (e.clientY - dragStartY) / displayScale
 
     let newOffsetX = dragStartOffsetX + dx
     let newOffsetY = dragStartOffsetY + dy
 
-    if (mockupStore.snapEnabled && mockupStore.currentTemplate.fitRegion && designImg) {
-      const fit = mockupStore.currentTemplate.fitRegion
+    if (mockupStore.snapEnabled && activeFitRegion.value && designImg) {
+      const fit = activeFitRegion.value
       const designWidth = fit.width * mockupStore.scale.x
       const designHeight = fit.height * mockupStore.scale.y
 
@@ -948,6 +996,7 @@ async function onGenerate() {
     const targetWidth = tpl.width * mockupStore.exportSettings.width
     const targetHeight = tpl.height * mockupStore.exportSettings.width
 
+    const fitRegionToUse = activeFitRegion.value
     const result = await imageStore.generateComposite({
       templateImageUrl: tpl.imageUrl,
       designImageUrl: imageStore.processedImageUrl || designUrl,
@@ -956,10 +1005,10 @@ async function onGenerate() {
       lightingEnabled: imageStore.lightingEnabled,
       customLightingParams: imageStore.customLightingParams,
       fitRegion: {
-        x: tpl.fitRegion.x,
-        y: tpl.fitRegion.y,
-        width: tpl.fitRegion.width,
-        height: tpl.fitRegion.height,
+        x: fitRegionToUse?.x ?? tpl.fitRegion.x,
+        y: fitRegionToUse?.y ?? tpl.fitRegion.y,
+        width: fitRegionToUse?.width ?? tpl.fitRegion.width,
+        height: fitRegionToUse?.height ?? tpl.fitRegion.height,
       },
       offsetX: mockupStore.offset.x,
       offsetY: mockupStore.offset.y,
@@ -1438,5 +1487,15 @@ function onDownload() {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
+}
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+.text-sm {
+  font-size: 12px;
+}
+.region-info {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 </style>
