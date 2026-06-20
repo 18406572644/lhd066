@@ -150,6 +150,69 @@ CREATE TABLE IF NOT EXISTS template_versions (
 CREATE INDEX IF NOT EXISTS idx_template_versions_template_id ON template_versions(template_id);
 CREATE INDEX IF NOT EXISTS idx_template_versions_version ON template_versions(template_id, version_number);
 CREATE INDEX IF NOT EXISTS idx_template_versions_stable ON template_versions(template_id, is_stable);
+CREATE TABLE IF NOT EXISTS favorites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, template_id)
+);
+CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_template_id ON favorites(template_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_created_at ON favorites(created_at);
+CREATE TABLE IF NOT EXISTS template_ratings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+    comment TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, template_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ratings_template_id ON template_ratings(template_id);
+CREATE INDEX IF NOT EXISTS idx_ratings_created_at ON template_ratings(created_at);
+CREATE TABLE IF NOT EXISTS transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    template_id INTEGER NOT NULL REFERENCES templates(id),
+    amount REAL NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'CNY',
+    status TEXT NOT NULL DEFAULT 'completed' CHECK(status IN ('pending', 'completed', 'refunded', 'failed')),
+    payment_method TEXT,
+    transaction_id TEXT UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_template_id ON transactions(template_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
+CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
+CREATE TABLE IF NOT EXISTS export_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    type TEXT NOT NULL CHECK(type IN ('personal_data', 'analytics_report')),
+    format TEXT NOT NULL CHECK(format IN ('json', 'csv', 'pdf')),
+    file_path TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'completed', 'failed')),
+    parameters TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_exports_user_id ON export_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_exports_status ON export_records(status);
+CREATE INDEX IF NOT EXISTS idx_exports_created_at ON export_records(created_at);
+CREATE TABLE IF NOT EXISTS user_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    region TEXT,
+    country TEXT,
+    city TEXT,
+    bio TEXT,
+    preferred_categories TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_region ON user_profiles(region);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_country ON user_profiles(country);
 `)
 
 const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@mockup.studio')
@@ -162,5 +225,13 @@ if (!adminExists) {
     'admin'
   )
 }
+
+import('./seed-analytics.js').then(module => {
+  try {
+    module.default()
+  } catch (err) {
+    console.error('Failed to seed analytics data:', err)
+  }
+})
 
 export default db

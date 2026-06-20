@@ -17,6 +17,8 @@ import statsRoutes from './routes/stats.js'
 import uploadRoutes from './routes/upload.js'
 import batchTaskRoutes from './routes/batch-tasks.js'
 import notificationRoutes from './routes/notifications.js'
+import exportRoutes from './routes/export.js'
+import analyticsRoutes from './routes/analytics.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -39,6 +41,8 @@ app.use('/api/stats', statsRoutes)
 app.use('/api/upload', uploadRoutes)
 app.use('/api/batch-tasks', batchTaskRoutes)
 app.use('/api/notifications', notificationRoutes)
+app.use('/api/export', exportRoutes)
+app.use('/api/analytics', analyticsRoutes)
 
 app.use(
   '/api/health',
