@@ -38,6 +38,9 @@
             <div v-if="getStableVersionLabel(tpl.id)" class="card-stable">
               <icon-check /> {{ getStableVersionLabel(tpl.id) }}
             </div>
+            <div v-if="tpl.qualityGrade" class="card-quality" :class="'grade-' + tpl.qualityGrade">
+              {{ tpl.qualityGrade }}级
+            </div>
           </div>
           <div class="card-overlay">
             <a-button type="primary" size="small" @click.stop="$router.push(`/template/${tpl.id}`)">
@@ -163,6 +166,33 @@ function onPageChange(page: number) {
   border-radius: 4px;
   font-weight: 600;
   backdrop-filter: blur(4px);
+}
+.card-quality {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
+}
+.card-quality.grade-S {
+  background: rgba(0, 180, 42, 0.92);
+  color: #fff;
+}
+.card-quality.grade-A {
+  background: rgba(22, 93, 255, 0.92);
+  color: #fff;
+}
+.card-quality.grade-B {
+  background: rgba(255, 125, 0, 0.92);
+  color: #fff;
+}
+.card-quality.grade-C {
+  background: rgba(245, 63, 63, 0.92);
+  color: #fff;
 }
 .card-overlay {
   position: absolute;

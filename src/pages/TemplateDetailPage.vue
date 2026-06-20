@@ -163,13 +163,13 @@ const canEdit = computed(() => {
 })
 
 const qualityGrade = computed(() => {
-  const t = currentTemplate.value as any
-  return t?.quality_grade || null
+  const t = currentTemplate.value
+  return t?.qualityGrade || null
 })
 
 const qualityScore = computed(() => {
-  const t = currentTemplate.value as any
-  return t?.quality_score || 0
+  const t = currentTemplate.value
+  return t?.qualityScore || 0
 })
 
 const gradeColor = computed(() => {

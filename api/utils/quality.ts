@@ -45,8 +45,14 @@ interface TemplateData {
 }
 
 function getAbsoluteImagePath(imageUrl: string): string {
-  if (path.isAbsolute(imageUrl)) return imageUrl
-  return path.resolve(__dirname, '..', '..', imageUrl.replace(/^\//, ''))
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    return imageUrl
+  }
+  if (path.isAbsolute(imageUrl) && /^[A-Za-z]:/.test(imageUrl)) {
+    return imageUrl
+  }
+  const relativePath = imageUrl.replace(/^\//, '').replace(/^\.\//, '')
+  return path.resolve(process.cwd(), relativePath)
 }
 
 function checkFitRegion(t: TemplateData): { score: number; issues: QualityIssue[]; suggestions: QualitySuggestion[] } {
@@ -210,6 +216,26 @@ async function checkImageQuality(t: TemplateData): Promise<{ score: number; issu
         message: `图片文件过大 (${(metadata.size / 1024 / 1024).toFixed(1)}MB)，可能影响加载速度`
       })
       score -= 5
+    }
+
+    const blurResult = await detectBlur(imagePath, metadata.width!, metadata.height!)
+    if (blurResult.isBlurry) {
+      issues.push({
+        dimension: 'image_quality',
+        severity: blurResult.level === 'severe' ? 'critical' : 'warning',
+        message: `图片可能存在模糊（清晰度分数: ${blurResult.score.toFixed(0)}/100）`
+      })
+      score -= blurResult.level === 'severe' ? 25 : 12
+    }
+
+    const artifactResult = await detectCompressionArtifacts(imagePath, metadata.format, metadata.width!, metadata.height!)
+    if (artifactResult.hasArtifacts) {
+      issues.push({
+        dimension: 'image_quality',
+        severity: artifactResult.level === 'severe' ? 'warning' : 'info',
+        message: `检测到压缩伪影（伪影分数: ${artifactResult.score.toFixed(0)}/100）`
+      })
+      score -= artifactResult.level === 'severe' ? 10 : 5
     }
 
     if (maxDimension >= 2000 && (!issues.some(i => i.dimension === 'image_quality' && i.severity === 'critical'))) {
@@ -392,6 +418,140 @@ async function countDarkPixels(data: Buffer, width: number, height: number): Pro
     if (luminance < 64) count++
   }
   return count
+}
+
+async function detectBlur(imagePath: string, origWidth: number, origHeight: number): Promise<{ isBlurry: boolean; level: 'none' | 'mild' | 'severe'; score: number }> {
+  try {
+    const sampleWidth = Math.min(300, origWidth)
+    const sampleHeight = Math.round(origHeight * sampleWidth / origWidth)
+
+    const { data, info } = await sharp(imagePath)
+      .resize(sampleWidth, sampleHeight)
+      .grayscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+
+    const { width, height } = info
+    const laplacian: number[] = []
+    let sum = 0
+
+    const kernel = [
+      [0, 1, 0],
+      [1, -4, 1],
+      [0, 1, 0],
+    ]
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        let val = 0
+        for (let ky = -1; ky <= 1; ky++) {
+          for (let kx = -1; kx <= 1; kx++) {
+            const idx = ((y + ky) * width + (x + kx)) * 1
+            val += data[idx] * kernel[ky + 1][kx + 1]
+          }
+        }
+        const absVal = Math.abs(val)
+        laplacian.push(absVal)
+        sum += absVal
+      }
+    }
+
+    const mean = sum / laplacian.length
+    let variance = 0
+    for (const v of laplacian) {
+      variance += (v - mean) * (v - mean)
+    }
+    variance /= laplacian.length
+
+    const stdDev = Math.sqrt(variance)
+    const score = Math.min(100, Math.max(0, stdDev * 2.5))
+
+    let level: 'none' | 'mild' | 'severe' = 'none'
+    let isBlurry = false
+    if (score < 25) {
+      isBlurry = true
+      level = 'severe'
+    } else if (score < 50) {
+      isBlurry = true
+      level = 'mild'
+    }
+
+    return { isBlurry, level, score }
+  } catch {
+    return { isBlurry: false, level: 'none', score: 100 }
+  }
+}
+
+async function detectCompressionArtifacts(imagePath: string, format: string | undefined, origWidth: number, origHeight: number): Promise<{ hasArtifacts: boolean; level: 'none' | 'mild' | 'severe'; score: number }> {
+  try {
+    if (format === 'png' || format === 'svg') {
+      return { hasArtifacts: false, level: 'none', score: 100 }
+    }
+
+    const sampleWidth = Math.min(200, origWidth)
+    const sampleHeight = Math.round(origHeight * sampleWidth / origWidth)
+
+    const { data, info } = await sharp(imagePath)
+      .resize(sampleWidth, sampleHeight)
+      .grayscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+
+    const { width, height } = info
+    let blockiness = 0
+    const blockSize = 8
+
+    let horizBlockEdges = 0
+    let vertBlockEdges = 0
+    const totalHoriz = width - 1
+    const totalVert = height - 1
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width - 1; x++) {
+        const idx1 = y * width + x
+        const idx2 = y * width + x + 1
+        const diff = Math.abs(data[idx1] - data[idx2])
+        if (x % blockSize === blockSize - 1) {
+          horizBlockEdges += diff
+        }
+      }
+    }
+
+    for (let x = 0; x < width; x++) {
+      for (let y = 0; y < height - 1; y++) {
+        const idx1 = y * width + x
+        const idx2 = (y + 1) * width + x
+        const diff = Math.abs(data[idx1] - data[idx2])
+        if (y % blockSize === blockSize - 1) {
+          vertBlockEdges += diff
+        }
+      }
+    }
+
+    const avgBlockEdge = (horizBlockEdges + vertBlockEdges) / (Math.floor(height / blockSize) * (width - 1) + Math.floor(width / blockSize) * (height - 1))
+    const avgInnerEdge = avgBlockEdge * 0.4
+
+    const blockinessRatio = avgBlockEdge / Math.max(1, avgInnerEdge)
+
+    let score = 100
+    if (blockinessRatio > 1.5) {
+      score = Math.max(0, 100 - (blockinessRatio - 1.5) * 30)
+    }
+
+    let level: 'none' | 'mild' | 'severe' = 'none'
+    let hasArtifacts = false
+    if (score < 50) {
+      hasArtifacts = true
+      level = 'severe'
+    } else if (score < 75) {
+      hasArtifacts = true
+      level = 'mild'
+    }
+
+    return { hasArtifacts, level, score }
+  } catch {
+    return { hasArtifacts: false, level: 'none', score: 100 }
+  }
 }
 
 function generateAutoTags(t: TemplateData, imageMetadata?: sharp.Metadata): string[] {

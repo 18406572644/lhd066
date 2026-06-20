@@ -16,9 +16,18 @@ fs.mkdirSync(path.join(uploadsDir, 'designs'), { recursive: true })
 fs.mkdirSync(path.join(uploadsDir, 'results'), { recursive: true })
 
 const dbPath = path.join(dataDir, 'mockup.db')
-const db = new Database(dbPath)
+const journalMode = process.env.SQLITE_JOURNAL_MODE || 'DELETE'
 
-const journalMode = process.env.SQLITE_JOURNAL_MODE || 'WAL'
+if (journalMode !== 'WAL') {
+  try {
+    fs.unlinkSync(dbPath + '-shm')
+    fs.unlinkSync(dbPath + '-wal')
+  } catch (_) {
+    // files may not exist, ignore
+  }
+}
+
+const db = new Database(dbPath)
 db.pragma(`journal_mode = ${journalMode}`)
 db.pragma('foreign_keys = ON')
 

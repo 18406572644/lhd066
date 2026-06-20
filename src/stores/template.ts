@@ -143,7 +143,8 @@ export const useTemplateStore = defineStore('template', () => {
   async function createTemplate(data: FormData) {
     const { upload } = await import('@/utils/api')
     const res = await upload<any>('/templates', data)
-    return mapTemplate(res)
+    const template = mapTemplate(res)
+    return { ...template, qualityReport: res.qualityReport || null }
   }
 
   async function updateTemplate(id: number, data: Record<string, unknown>) {
