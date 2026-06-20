@@ -47,7 +47,53 @@
           </div>
         </template>
       </a-upload>
+
+      <div v-if="mockupStore.designImage" class="design-actions mt-3">
+        <a-button
+          size="small"
+          long
+          :loading="imageStore.isRemovingBackground"
+          @click="onRemoveBackground"
+        >
+          <template #icon><Scissors class="icon" /></template>
+          AI 智能抠图
+        </a-button>
+        <a-button
+          size="small"
+          long
+          class="mt-2"
+          :disabled="!imageStore.hasMask"
+          @click="showMaskEditor = true"
+        >
+          <template #icon><Palette class="icon" /></template>
+          编辑蒙版
+        </a-button>
+
+        <div v-if="imageStore.hasMask" class="mask-preview mt-3">
+          <div class="section-title mb-2">抠图预览</div>
+          <div class="preview-wrapper checkerboard">
+            <img
+              v-if="imageStore.processedImageUrl"
+              :src="imageStore.processedImageUrl"
+              alt="processed design"
+              class="preview-img"
+            />
+          </div>
+          <a-tag color="green" class="mt-2" v-if="imageStore.hasMask">
+            <Wand2 class="icon" />
+            已抠图
+          </a-tag>
+        </div>
+      </div>
     </div>
+
+    <MaskEditor
+      :visible="showMaskEditor"
+      :image-url="imageStore.originalImageUrl || mockupStore.designImage || ''"
+      :mask-url="imageStore.maskCurrentUrl || ''"
+      @close="showMaskEditor = false"
+      @confirm="onMaskConfirmed"
+    />
 
     <div class="generator-center">
       <div class="canvas-toolbar">
@@ -158,61 +204,104 @@
     </div>
 
     <div class="panel">
-      <div class="panel-section">
-        <div class="section-title">位置</div>
-        <div class="flex gap-3">
-          <div class="flex-1">
-            <div class="field-label">X 偏移</div>
-            <a-input-number v-model="mockupStore.offset.x" :step="1" size="small" @change="renderCanvas" />
+      <div class="panel-tabs">
+        <div
+          class="panel-tab"
+          :class="{ active: activeTab === 'lighting' }"
+          @click="activeTab = 'lighting'"
+        >
+          光照
+        </div>
+        <div
+          class="panel-tab"
+          :class="{ active: activeTab === 'background' }"
+          @click="activeTab = 'background'"
+        >
+          背景
+        </div>
+        <div
+          class="panel-tab"
+          :class="{ active: activeTab === 'adjust' }"
+          @click="activeTab = 'adjust'"
+        >
+          调整
+        </div>
+      </div>
+
+      <div class="panel-content-area">
+        <div v-show="activeTab === 'lighting'" class="tab-content">
+          <LightingPanel
+            :template-image-url="mockupStore.currentTemplate?.imageUrl || null"
+            :design-image-url="uploadedDesignUrl || imageStore.processedImageUrl || null"
+            @applied="onLightingApplied"
+          />
+        </div>
+
+        <div v-show="activeTab === 'background'" class="tab-content">
+          <BackgroundEditor
+            @applied="onBackgroundApplied"
+          />
+        </div>
+
+        <div v-show="activeTab === 'adjust'" class="tab-content">
+          <div class="panel-section">
+            <div class="section-title">位置</div>
+            <div class="flex gap-3">
+              <div class="flex-1">
+                <div class="field-label">X 偏移</div>
+                <a-input-number v-model="mockupStore.offset.x" :step="1" size="small" @change="renderCanvas" />
+              </div>
+              <div class="flex-1">
+                <div class="field-label">Y 偏移</div>
+                <a-input-number v-model="mockupStore.offset.y" :step="1" size="small" @change="renderCanvas" />
+              </div>
+            </div>
           </div>
-          <div class="flex-1">
-            <div class="field-label">Y 偏移</div>
-            <a-input-number v-model="mockupStore.offset.y" :step="1" size="small" @change="renderCanvas" />
+          <div class="panel-section">
+            <div class="section-title">缩放</div>
+            <div class="field-label">缩放 X</div>
+            <a-slider v-model="mockupStore.scale.x" :min="0.1" :max="3" :step="0.05" @change="renderCanvas" />
+            <div class="field-label">缩放 Y</div>
+            <a-slider v-model="mockupStore.scale.y" :min="0.1" :max="3" :step="0.05" @change="renderCanvas" />
+          </div>
+          <div class="panel-section">
+            <div class="section-title">辅助线</div>
+            <div class="field-label">共 {{ mockupStore.guides.length }} 条</div>
+            <div class="guide-list" v-if="mockupStore.guides.length > 0">
+              <div
+                v-for="guide in mockupStore.guides" :key="guide.id"
+                class="guide-item"
+              >
+                <span class="guide-type">{{ guide.type === 'horizontal' ? '水平' : '垂直' }}</span>
+                <span class="guide-pos">{{ Math.round(guide.position) }}px</span>
+                <a-button size="mini" type="text" @click="mockupStore.removeGuide(guide.id)">删除</a-button>
+              </div>
+            </div>
+            <div v-else class="guide-empty">暂无辅助线</div>
+          </div>
+          <div class="panel-section">
+            <div class="section-title">导出设置</div>
+            <div class="field-label">分辨率</div>
+            <a-radio-group v-model="mockupStore.exportSettings.width" type="button" size="small">
+              <a-radio :value="1">1x</a-radio>
+              <a-radio :value="2">2x</a-radio>
+              <a-radio :value="3">3x</a-radio>
+            </a-radio-group>
+            <div class="field-label mt-3">格式</div>
+            <a-radio-group v-model="mockupStore.exportSettings.format" type="button" size="small">
+              <a-radio value="png">PNG</a-radio>
+              <a-radio value="jpeg">JPEG</a-radio>
+              <a-radio value="webp">WebP</a-radio>
+            </a-radio-group>
           </div>
         </div>
       </div>
-      <div class="panel-section">
-        <div class="section-title">缩放</div>
-        <div class="field-label">缩放 X</div>
-        <a-slider v-model="mockupStore.scale.x" :min="0.1" :max="3" :step="0.05" @change="renderCanvas" />
-        <div class="field-label">缩放 Y</div>
-        <a-slider v-model="mockupStore.scale.y" :min="0.1" :max="3" :step="0.05" @change="renderCanvas" />
-      </div>
-      <div class="panel-section">
-        <div class="section-title">辅助线</div>
-        <div class="field-label">共 {{ mockupStore.guides.length }} 条</div>
-        <div class="guide-list" v-if="mockupStore.guides.length > 0">
-          <div
-            v-for="guide in mockupStore.guides" :key="guide.id"
-            class="guide-item"
-          >
-            <span class="guide-type">{{ guide.type === 'horizontal' ? '水平' : '垂直' }}</span>
-            <span class="guide-pos">{{ Math.round(guide.position) }}px</span>
-            <a-button size="mini" type="text" @click="mockupStore.removeGuide(guide.id)">删除</a-button>
-          </div>
-        </div>
-        <div v-else class="guide-empty">暂无辅助线</div>
-      </div>
-      <div class="panel-section">
-        <div class="section-title">导出设置</div>
-        <div class="field-label">分辨率</div>
-        <a-radio-group v-model="mockupStore.exportSettings.width" type="button" size="small">
-          <a-radio :value="1">1x</a-radio>
-          <a-radio :value="2">2x</a-radio>
-          <a-radio :value="3">3x</a-radio>
-        </a-radio-group>
-        <div class="field-label mt-3">格式</div>
-        <a-radio-group v-model="mockupStore.exportSettings.format" type="button" size="small">
-          <a-radio value="png">PNG</a-radio>
-          <a-radio value="jpeg">JPEG</a-radio>
-          <a-radio value="webp">WebP</a-radio>
-        </a-radio-group>
-      </div>
+
       <a-button
         type="primary"
         long
         size="large"
-        :loading="mockupStore.generating"
+        :loading="imageStore.isGenerating || mockupStore.generating"
         :disabled="!mockupStore.currentTemplate || !mockupStore.designFile"
         @click="onGenerate"
       >
@@ -235,21 +324,32 @@ import { useRoute } from 'vue-router'
 import { useMockupStore } from '@/stores/mockup'
 import { useTemplateStore, type Template, type TemplateVersion } from '@/stores/template'
 import { useHistoryStore } from '@/stores/history'
+import { useImageProcessingStore } from '@/stores/imageProcessing'
 import type { Guide } from '@/stores/mockup'
+import { upload } from '@/utils/api'
 import { Message } from '@arco-design/web-vue'
 import type { FileItem } from '@arco-design/web-vue'
 import VersionSelector from '@/components/VersionSelector.vue'
+import MaskEditor from '@/components/MaskEditor.vue'
+import LightingPanel from '@/components/LightingPanel.vue'
+import BackgroundEditor from '@/components/BackgroundEditor.vue'
+import { Scissors, Palette, Wand2 } from 'lucide-vue-next'
 
 const route = useRoute()
 const mockupStore = useMockupStore()
 const templateStore = useTemplateStore()
 const historyStore = useHistoryStore()
+const imageStore = useImageProcessingStore()
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const canvasWrapperRef = ref<HTMLDivElement | null>(null)
 const canvasStageRef = ref<HTMLDivElement | null>(null)
 const rulerHRef = ref<HTMLDivElement | null>(null)
 const rulerVRef = ref<HTMLDivElement | null>(null)
 const designFileList = ref<FileItem[]>([])
+const uploadedDesignUrl = ref<string | null>(null)
+
+const showMaskEditor = ref(false)
+const activeTab = ref<'lighting' | 'background' | 'adjust'>('lighting')
 
 const selectedVersionId = ref<number | null>(null)
 const selectedVersionInfo = computed<TemplateVersion | null>(() =>
@@ -455,6 +555,7 @@ function onDesignChange(fileItemList: FileItem[]) {
   if (fileItemList.length > 0 && fileItemList[0].file) {
     const file = fileItemList[0].file
     mockupStore.designFile = file
+    imageStore.resetAll()
     const reader = new FileReader()
     reader.onload = (e) => {
       mockupStore.designImage = e.target?.result as string
@@ -463,7 +564,72 @@ function onDesignChange(fileItemList: FileItem[]) {
   } else {
     mockupStore.designFile = null
     mockupStore.designImage = null
+    uploadedDesignUrl.value = null
+    imageStore.resetAll()
   }
+}
+
+async function onRemoveBackground() {
+  if (!mockupStore.designFile) return
+
+  try {
+    const fd = new FormData()
+    fd.append('image', mockupStore.designFile)
+    const uploadRes = await upload<{ url: string; width: number; height: number }>('/upload/design-image', fd)
+    uploadedDesignUrl.value = uploadRes.url
+    imageStore.setOriginalImage(uploadRes.url)
+
+    await imageStore.removeBackground(uploadRes.url)
+
+    if (imageStore.processedImageUrl) {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        designImg = img
+        renderCanvas()
+      }
+      img.src = imageStore.processedImageUrl + '?t=' + Date.now()
+    }
+
+    Message.success('抠图完成，可点击「编辑蒙版」进行精细调整')
+  } catch (e: any) {
+    Message.error(e.message || '抠图失败')
+  }
+}
+
+function onMaskConfirmed(maskUrl: string) {
+  Message.success('蒙版已更新')
+  showMaskEditor.value = false
+
+  if (imageStore.originalImageUrl) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        designImg = img
+        renderCanvas()
+      }
+      img.src = e.target?.result as string
+    }
+    fetch(imageStore.originalImageUrl)
+      .then(r => r.blob())
+      .then(b => reader.readAsDataURL(b))
+  }
+}
+
+function onLightingApplied(imageUrl: string) {
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.onload = () => {
+    designImg = img
+    renderCanvas()
+  }
+  img.src = imageUrl + '?t=' + Date.now()
+}
+
+function onBackgroundApplied() {
+  Message.success('背景设置已保存，生成时将自动应用')
 }
 
 function renderCanvas() {
@@ -735,12 +901,64 @@ function getSnapGuideStyle(guide: { type: 'horizontal' | 'vertical'; position: n
 }
 
 async function onGenerate() {
+  if (!mockupStore.currentTemplate) {
+    Message.warning('请先选择模板')
+    return
+  }
+  if (!mockupStore.designFile && !uploadedDesignUrl.value) {
+    Message.warning('请先上传设计图')
+    return
+  }
+
   try {
-    await mockupStore.generateMockup()
+    mockupStore.generating = true
+
+    let designUrl = uploadedDesignUrl.value
+    if (!designUrl && mockupStore.designFile) {
+      const fd = new FormData()
+      fd.append('image', mockupStore.designFile)
+      const uploadRes = await upload<{ url: string; width: number; height: number }>('/upload/design-image', fd)
+      designUrl = uploadRes.url
+      uploadedDesignUrl.value = uploadRes.url
+    }
+
+    if (!designUrl) {
+      Message.warning('请先上传设计图')
+      return
+    }
+
+    const tpl = mockupStore.currentTemplate
+    const targetWidth = tpl.width * mockupStore.exportSettings.width
+    const targetHeight = tpl.height * mockupStore.exportSettings.width
+
+    const result = await imageStore.generateComposite({
+      templateImageUrl: tpl.imageUrl,
+      designImageUrl: imageStore.processedImageUrl || designUrl,
+      maskImageUrl: imageStore.maskCurrentUrl || undefined,
+      backgroundParams: imageStore.backgroundReplaceEnabled ? imageStore.backgroundParams : null,
+      lightingEnabled: imageStore.lightingEnabled,
+      customLightingParams: imageStore.customLightingParams,
+      fitRegion: {
+        x: tpl.fitRegion.x,
+        y: tpl.fitRegion.y,
+        width: tpl.fitRegion.width,
+        height: tpl.fitRegion.height,
+      },
+      offsetX: mockupStore.offset.x,
+      offsetY: mockupStore.offset.y,
+      scaleX: mockupStore.scale.x,
+      scaleY: mockupStore.scale.y,
+      targetWidth,
+      targetHeight,
+    })
+
+    mockupStore.resultUrl = result.resultImageUrl
     Message.success('生成成功')
     historyStore.fetchHistory()
   } catch (e: any) {
     Message.error(e.message || '生成失败')
+  } finally {
+    mockupStore.generating = false
   }
 }
 
@@ -1113,5 +1331,95 @@ function onDownload() {
 }
 .mt-2 {
   margin-top: 8px;
+}
+.mt-3 {
+  margin-top: 12px;
+}
+.mb-2 {
+  margin-bottom: 8px;
+}
+.icon {
+  width: 14px;
+  height: 14px;
+}
+.long {
+  width: 100%;
+}
+
+.design-actions {
+  display: flex;
+  flex-direction: column;
+}
+
+.mask-preview {
+  background: var(--color-fill-2);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+}
+
+.preview-wrapper {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--color-border);
+}
+
+.preview-img {
+  width: 100%;
+  display: block;
+}
+
+.checkerboard {
+  background-image:
+    linear-gradient(45deg, #ccc 25%, transparent 25%),
+    linear-gradient(-45deg, #ccc 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ccc 75%),
+    linear-gradient(-45deg, transparent 75%, #ccc 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+}
+
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  margin: -16px -16px 12px -16px;
+  padding: 0 8px;
+}
+
+.panel-tab {
+  flex: 1;
+  padding: 12px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.panel-tab:hover {
+  color: var(--color-text);
+}
+
+.panel-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: 500;
+}
+
+.panel-content-area {
+  max-height: calc(100vh - 400px);
+  overflow-y: auto;
+  margin-right: -8px;
+  padding-right: 8px;
+}
+
+.tab-content {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>
