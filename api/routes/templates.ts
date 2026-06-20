@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import db from '../db.js'
 import { authMiddleware, optionalAuth } from '../middleware/auth.js'
 import { templateUpload } from '../middleware/upload.js'
+import { runQualityInspection, getQualityReport } from '../utils/quality.js'
 
 const router = Router()
 
@@ -44,7 +45,9 @@ router.get('/', optionalAuth, async (req: Request, res: Response): Promise<void>
     const total = countRow.total
 
     const templates = db.prepare(
-      `SELECT t.* FROM templates t ${whereStr} ORDER BY t.created_at DESC LIMIT ? OFFSET ?`
+      `SELECT t.* FROM templates t ${whereStr} ORDER BY
+        CASE t.quality_grade WHEN 'S' THEN 0 WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END,
+        t.quality_score DESC, t.created_at DESC LIMIT ? OFFSET ?`
     ).all(...params, limitNum, offset) as any[]
 
     const templateIds = templates.map(t => t.id)
@@ -112,7 +115,7 @@ router.get('/:id', optionalAuth, async (req: Request, res: Response): Promise<vo
 
 router.post('/', authMiddleware, templateUpload.single('image'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, category, width, height, fit_x, fit_y, fit_width, fit_height, permission, tags } = req.body
+    const { name, category, width, height, fit_x, fit_y, fit_width, fit_height, permission, tags, description } = req.body
     const imageUrl = req.file ? `/uploads/templates/${req.file.filename}` : req.body.image_url
 
     if (!name || !category || !imageUrl) {
@@ -120,9 +123,11 @@ router.post('/', authMiddleware, templateUpload.single('image'), async (req: Req
       return
     }
 
+    const initialPermission = permission || 'public'
+
     const result = db.prepare(
-      `INSERT INTO templates (user_id, name, category, width, height, image_url, fit_x, fit_y, fit_width, fit_height, permission)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO templates (user_id, name, category, width, height, image_url, fit_x, fit_y, fit_width, fit_height, permission, description)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       req.user!.id,
       name,
@@ -134,7 +139,8 @@ router.post('/', authMiddleware, templateUpload.single('image'), async (req: Req
       parseInt(fit_y) || 0,
       parseInt(fit_width) || 0,
       parseInt(fit_height) || 0,
-      permission || 'public'
+      initialPermission,
+      description || ''
     )
 
     const templateId = result.lastInsertRowid
@@ -161,9 +167,21 @@ router.post('/', authMiddleware, templateUpload.single('image'), async (req: Req
       'SELECT tg.name FROM template_tags tt JOIN tags tg ON tt.tag_id = tg.id WHERE tt.template_id = ?'
     ).all(templateId) as any[]
 
+    let qualityReport = null
+    try {
+      qualityReport = await runQualityInspection(Number(templateId))
+      if (qualityReport.grade === 'C') {
+        db.prepare("UPDATE templates SET permission = 'restricted' WHERE id = ?").run(templateId)
+        template.permission = 'restricted'
+        template.review_status = 'pending'
+      }
+    } catch (e) {
+      console.error('Quality inspection failed for template', templateId, e)
+    }
+
     res.status(201).json({
       success: true,
-      data: { ...template, tags: tagRows.map(t => t.name) }
+      data: { ...template, tags: tagRows.map(t => t.name), qualityReport }
     })
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message })

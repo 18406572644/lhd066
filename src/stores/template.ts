@@ -16,6 +16,9 @@ export interface Template {
   permission: string
   userId: number
   createdAt: string
+  qualityScore: number
+  qualityGrade: string
+  reviewStatus: string
 }
 
 export interface TemplateVersion {
@@ -63,6 +66,9 @@ function mapTemplate(raw: any): Template {
     permission: raw.permission,
     userId: raw.user_id,
     createdAt: raw.created_at,
+    qualityScore: raw.quality_score ?? 0,
+    qualityGrade: raw.quality_grade ?? 'C',
+    reviewStatus: raw.review_status ?? 'auto',
   }
 }
 

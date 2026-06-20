@@ -19,6 +19,7 @@ import batchTaskRoutes from './routes/batch-tasks.js'
 import notificationRoutes from './routes/notifications.js'
 import exportRoutes from './routes/export.js'
 import analyticsRoutes from './routes/analytics.js'
+import qualityRoutes from './routes/quality.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -43,6 +44,7 @@ app.use('/api/batch-tasks', batchTaskRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/export', exportRoutes)
 app.use('/api/analytics', analyticsRoutes)
+app.use('/api/quality', qualityRoutes)
 
 app.use(
   '/api/health',

@@ -32,6 +32,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/TemplateDetailPage.vue'),
       },
       {
+        path: 'template/:id/quality',
+        name: 'quality-report',
+        component: () => import('@/pages/QualityReportPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
         path: 'upload',
         name: 'upload',
         component: () => import('@/pages/TemplateUploadPage.vue'),

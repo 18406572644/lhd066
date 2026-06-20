@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS templates (
     permission TEXT NOT NULL DEFAULT 'public' CHECK(permission IN ('public', 'private', 'restricted')),
     share_token TEXT UNIQUE,
     use_count INTEGER NOT NULL DEFAULT 0,
+    quality_score INTEGER NOT NULL DEFAULT 0,
+    quality_grade TEXT NOT NULL DEFAULT 'C',
+    review_status TEXT NOT NULL DEFAULT 'auto',
+    description TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS tags (
@@ -213,7 +217,40 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 );
 CREATE INDEX IF NOT EXISTS idx_user_profiles_region ON user_profiles(region);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_country ON user_profiles(country);
+CREATE TABLE IF NOT EXISTS quality_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    fit_region_score INTEGER NOT NULL DEFAULT 0,
+    image_quality_score INTEGER NOT NULL DEFAULT 0,
+    metadata_score INTEGER NOT NULL DEFAULT 0,
+    accessibility_score INTEGER NOT NULL DEFAULT 0,
+    total_score INTEGER NOT NULL DEFAULT 0,
+    grade TEXT NOT NULL DEFAULT 'C' CHECK(grade IN ('S', 'A', 'B', 'C')),
+    issues TEXT NOT NULL DEFAULT '[]',
+    suggestions TEXT NOT NULL DEFAULT '[]',
+    auto_tags TEXT NOT NULL DEFAULT '[]',
+    review_status TEXT NOT NULL DEFAULT 'auto' CHECK(review_status IN ('auto', 'pending', 'approved', 'rejected')),
+    reviewed_by INTEGER REFERENCES users(id),
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_quality_reports_template_id ON quality_reports(template_id);
+CREATE INDEX IF NOT EXISTS idx_quality_reports_grade ON quality_reports(grade);
+CREATE INDEX IF NOT EXISTS idx_quality_reports_review_status ON quality_reports(review_status);
 `)
+
+const migrateColumns = [
+  { table: 'templates', column: 'quality_score', def: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'templates', column: 'quality_grade', def: "TEXT NOT NULL DEFAULT 'C'" },
+  { table: 'templates', column: 'review_status', def: "TEXT NOT NULL DEFAULT 'auto'" },
+  { table: 'templates', column: 'description', def: 'TEXT' },
+]
+for (const m of migrateColumns) {
+  const exists = db.prepare(`SELECT COUNT(*) as cnt FROM pragma_table_info('${m.table}') WHERE name='${m.column}'`).get() as any
+  if (exists.cnt === 0) {
+    db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.def}`)
+  }
+}
 
 const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@mockup.studio')
 if (!adminExists) {

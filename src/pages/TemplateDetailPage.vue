@@ -60,6 +60,14 @@
               <a-tag v-if="activeVersionLabel" color="orangered">
                 {{ activeVersionLabel }}
               </a-tag>
+              <a-tag
+                v-if="qualityGrade"
+                :color="gradeColor"
+                class="cursor-pointer"
+                @click="$router.push(`/template/${templateId}/quality`)"
+              >
+                {{ qualityGrade }} 级 · {{ qualityScore }}分
+              </a-tag>
             </div>
           </div>
           <div v-if="displayTemplate.description" class="tdp-desc">
@@ -152,6 +160,24 @@ const displayTemplate = computed(() => {
 const canEdit = computed(() => {
   if (!authStore.user || !currentTemplate.value) return false
   return authStore.user.id === currentTemplate.value.userId || authStore.user.role === 'admin'
+})
+
+const qualityGrade = computed(() => {
+  const t = currentTemplate.value as any
+  return t?.quality_grade || null
+})
+
+const qualityScore = computed(() => {
+  const t = currentTemplate.value as any
+  return t?.quality_score || 0
+})
+
+const gradeColor = computed(() => {
+  const g = qualityGrade.value
+  if (g === 'S') return 'green'
+  if (g === 'A') return 'arcoblue'
+  if (g === 'B') return 'orangered'
+  return 'red'
 })
 
 const fitRegionStyle = computed(() => {
