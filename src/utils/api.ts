@@ -57,6 +57,28 @@ export function del<T>(path: string): Promise<T> {
   return request<T>('DELETE', path)
 }
 
+export async function downloadFile(path: string, filename?: string): Promise<void> {
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch(`${BASE_URL}${path}`, { headers })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(err.error || res.statusText)
+  }
+  const blob = await res.blob()
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || 'download'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.URL.revokeObjectURL(url)
+}
+
 export async function upload<T>(path: string, formData: FormData): Promise<T> {
   const token = getToken()
   const headers: Record<string, string> = {}

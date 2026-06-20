@@ -80,6 +80,18 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresAuth: true },
       },
       {
+        path: 'export',
+        name: 'data-export',
+        component: () => import('@/pages/DataExportPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
+        path: 'analytics',
+        name: 'analytics-report',
+        component: () => import('@/pages/AnalyticsReportPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/pages/UserSettingsPage.vue'),
