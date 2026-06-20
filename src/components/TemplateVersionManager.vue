@@ -96,59 +96,57 @@
     <a-modal
       v-model:visible="createVisible"
       title="保存为新版本"
-      @ok="fitRegionsStep === 1 ? fitRegionsStep = 2 : onSubmitNewVersion()"
-      @cancel="onCancelCreateVersion"
+      @ok="onSubmitNewVersion"
+      @cancel="createVisible = false"
       :confirm-loading="creating"
-      :ok-text="fitRegionsStep === 1 ? '下一步：配置贴合区域' : '保存新版本'"
-      :cancel-text="fitRegionsStep === 1 ? '取消' : '上一步'"
-      width="960px"
+      width="520px"
     >
-      <div v-if="fitRegionsStep === 1">
-        <a-form :model="versionForm" layout="vertical">
-          <a-form-item label="版本描述">
-            <a-textarea
-              v-model="versionForm.description"
-              placeholder="描述本次更新的内容..."
-              :auto-size="{ minRows: 3, maxRows: 6 }"
-            />
-          </a-form-item>
-          <a-divider style="margin: 12px 0">可选：覆盖模板信息</a-divider>
-          <a-form-item label="模板名称">
-            <a-input v-model="versionForm.name" :placeholder="currentTemplate?.name" />
-          </a-form-item>
-          <div class="grid grid-cols-2 gap-3">
-            <a-form-item label="宽度 (px)">
-              <a-input-number v-model="versionForm.width" :min="100" style="width: 100%" />
-            </a-form-item>
-            <a-form-item label="高度 (px)">
-              <a-input-number v-model="versionForm.height" :min="100" style="width: 100%" />
-            </a-form-item>
-          </div>
-          <a-form-item label="替换模板图片">
-            <a-upload
-              :auto-upload="false"
-              :limit="1"
-              list-type="picture-card"
-              accept="image/*"
-              @change="onImageChange"
-              :fileList="fileList"
-            />
-          </a-form-item>
-        </a-form>
-      </div>
-      <div v-else>
-        <div v-if="imagePreview">
-          <FitRegionEditor
-            v-model="versionForm.fitRegions"
-            :image-url="imagePreview"
-            :template-width="versionForm.width || currentTemplate?.width || 1080"
-            :template-height="versionForm.height || currentTemplate?.height || 1920"
+      <a-form :model="versionForm" layout="vertical">
+        <a-form-item label="版本描述">
+          <a-textarea
+            v-model="versionForm.description"
+            placeholder="描述本次更新的内容..."
+            :auto-size="{ minRows: 3, maxRows: 6 }"
           />
+        </a-form-item>
+        <a-divider style="margin: 12px 0">可选：覆盖模板信息</a-divider>
+        <a-form-item label="模板名称">
+          <a-input v-model="versionForm.name" :placeholder="currentTemplate?.name" />
+        </a-form-item>
+        <div class="grid grid-cols-2 gap-3">
+          <a-form-item label="宽度 (px)">
+            <a-input-number v-model="versionForm.width" :min="100" style="width: 100%" />
+          </a-form-item>
+          <a-form-item label="高度 (px)">
+            <a-input-number v-model="versionForm.height" :min="100" style="width: 100%" />
+          </a-form-item>
         </div>
-        <div v-else class="text-center py-8 text-secondary">
-          请先上传模板图片
+        <a-divider style="margin: 12px 0">贴合区域</a-divider>
+        <div class="grid grid-cols-2 gap-3">
+          <a-form-item label="X">
+            <a-input-number v-model="versionForm.fitX" :min="0" style="width: 100%" />
+          </a-form-item>
+          <a-form-item label="Y">
+            <a-input-number v-model="versionForm.fitY" :min="0" style="width: 100%" />
+          </a-form-item>
+          <a-form-item label="宽度">
+            <a-input-number v-model="versionForm.fitWidth" :min="10" style="width: 100%" />
+          </a-form-item>
+          <a-form-item label="高度">
+            <a-input-number v-model="versionForm.fitHeight" :min="10" style="width: 100%" />
+          </a-form-item>
         </div>
-      </div>
+        <a-form-item label="替换模板图片">
+          <a-upload
+            :auto-upload="false"
+            :limit="1"
+            list-type="picture-card"
+            accept="image/*"
+            @change="onImageChange"
+            :fileList="fileList"
+          />
+        </a-form-item>
+      </a-form>
     </a-modal>
 
     <a-modal
@@ -175,10 +173,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
-import { useTemplateStore, type Template, type TemplateVersion, type FitRegion } from '@/stores/template'
+import { useTemplateStore, type Template, type TemplateVersion } from '@/stores/template'
 import { Message, Modal } from '@arco-design/web-vue'
 import type { FileItem } from '@arco-design/web-vue'
-import FitRegionEditor from '@/components/FitRegionEditor.vue'
 
 const props = defineProps<{
   templateId: number
@@ -198,8 +195,6 @@ const rollbackTarget = ref<TemplateVersion | null>(null)
 const compareSet = ref<Set<number>>(new Set())
 const fileList = ref<FileItem[]>([])
 const imageFile = ref<File | null>(null)
-const imagePreview = ref<string | null>(null)
-const fitRegionsStep = ref(1)
 
 const versionForm = reactive({
   description: '',
@@ -210,7 +205,6 @@ const versionForm = reactive({
   fitY: undefined as number | undefined,
   fitWidth: undefined as number | undefined,
   fitHeight: undefined as number | undefined,
-  fitRegions: [] as FitRegion[],
 })
 
 watch(() => props.templateId, (id) => {
@@ -229,25 +223,8 @@ watch(() => props.currentTemplate, (tpl) => {
     versionForm.fitY = tpl.fitRegion.y
     versionForm.fitWidth = tpl.fitRegion.width
     versionForm.fitHeight = tpl.fitRegion.height
-    versionForm.fitRegions = tpl.fitRegions ? JSON.parse(JSON.stringify(tpl.fitRegions)) : [{
-      name: '默认区域',
-      x: tpl.fitRegion.x,
-      y: tpl.fitRegion.y,
-      width: tpl.fitRegion.width,
-      height: tpl.fitRegion.height,
-      sortOrder: 0,
-    }]
   }
 }, { immediate: true, deep: true })
-
-watch(() => versionForm.fitRegions, (regions) => {
-  if (regions.length > 0) {
-    versionForm.fitX = Math.round(regions[0].x)
-    versionForm.fitY = Math.round(regions[0].y)
-    versionForm.fitWidth = Math.round(regions[0].width)
-    versionForm.fitHeight = Math.round(regions[0].height)
-  }
-}, { deep: true })
 
 function formatDate(d: string) {
   const date = new Date(d)
@@ -261,33 +238,14 @@ function formatDate(d: string) {
 
 function onCreateNewVersion() {
   createVisible.value = true
-  fitRegionsStep.value = 1
-  if (props.currentTemplate) {
-    imagePreview.value = props.currentTemplate.imageUrl
-  }
-}
-
-function onCancelCreateVersion() {
-  if (fitRegionsStep.value === 2) {
-    fitRegionsStep.value = 1
-  } else {
-    createVisible.value = false
-    imagePreview.value = null
-  }
 }
 
 function onImageChange(fileItemList: FileItem[]) {
   fileList.value = fileItemList
   if (fileItemList.length > 0 && fileItemList[0].file) {
     imageFile.value = fileItemList[0].file
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imagePreview.value = e.target?.result as string
-    }
-    reader.readAsDataURL(fileItemList[0].file)
   } else {
     imageFile.value = null
-    imagePreview.value = props.currentTemplate?.imageUrl || null
   }
 }
 
@@ -304,9 +262,6 @@ async function onSubmitNewVersion() {
     if (versionForm.fitY !== undefined) fd.append('fit_y', String(versionForm.fitY))
     if (versionForm.fitWidth !== undefined) fd.append('fit_width', String(versionForm.fitWidth))
     if (versionForm.fitHeight !== undefined) fd.append('fit_height', String(versionForm.fitHeight))
-    if (versionForm.fitRegions.length > 0) {
-      fd.append('fitRegions', JSON.stringify(versionForm.fitRegions))
-    }
     if (imageFile.value) fd.append('image', imageFile.value)
 
     const v = await templateStore.createVersion(props.templateId, fd)
@@ -315,7 +270,6 @@ async function onSubmitNewVersion() {
     versionForm.description = ''
     fileList.value = []
     imageFile.value = null
-    imagePreview.value = null
   } catch (e: any) {
     Message.error(e.message || '创建版本失败')
   } finally {

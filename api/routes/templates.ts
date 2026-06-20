@@ -67,8 +67,7 @@ router.get('/', optionalAuth, async (req: Request, res: Response): Promise<void>
 
     const result = templates.map(t => ({
       ...t,
-      tags: tagsMap[t.id] || [],
-      fitRegions: getFitRegions(t.id, null)
+      tags: tagsMap[t.id] || []
     }))
 
     res.json({
@@ -107,7 +106,7 @@ router.get('/:id', optionalAuth, async (req: Request, res: Response): Promise<vo
 
     res.json({
       success: true,
-      data: { ...template, tags: tagRows.map(t => t.name), fitRegions: getFitRegions(template.id, null) }
+      data: { ...template, tags: tagRows.map(t => t.name) }
     })
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message })
@@ -124,29 +123,6 @@ router.post('/', authMiddleware, templateUpload.single('image'), async (req: Req
       return
     }
 
-    let fitRegions: any[] = []
-    if (req.body.fitRegions) {
-      try {
-        fitRegions = typeof req.body.fitRegions === 'string' 
-          ? JSON.parse(req.body.fitRegions) 
-          : req.body.fitRegions
-      } catch (e) {
-        console.error('Parse fitRegions failed:', e)
-      }
-    }
-
-    let primaryFitX = parseInt(fit_x) || 0
-    let primaryFitY = parseInt(fit_y) || 0
-    let primaryFitWidth = parseInt(fit_width) || 0
-    let primaryFitHeight = parseInt(fit_height) || 0
-
-    if (Array.isArray(fitRegions) && fitRegions.length > 0) {
-      primaryFitX = Math.round(fitRegions[0].x) || 0
-      primaryFitY = Math.round(fitRegions[0].y) || 0
-      primaryFitWidth = Math.round(fitRegions[0].width) || 0
-      primaryFitHeight = Math.round(fitRegions[0].height) || 0
-    }
-
     const initialPermission = permission || 'public'
 
     const result = db.prepare(
@@ -159,10 +135,10 @@ router.post('/', authMiddleware, templateUpload.single('image'), async (req: Req
       parseInt(width) || 0,
       parseInt(height) || 0,
       imageUrl,
-      primaryFitX,
-      primaryFitY,
-      primaryFitWidth,
-      primaryFitHeight,
+      parseInt(fit_x) || 0,
+      parseInt(fit_y) || 0,
+      parseInt(fit_width) || 0,
+      parseInt(fit_height) || 0,
       initialPermission,
       description || ''
     )
@@ -186,16 +162,12 @@ router.post('/', authMiddleware, templateUpload.single('image'), async (req: Req
       }
     }
 
-    if (Array.isArray(fitRegions) && fitRegions.length > 0) {
-      saveFitRegions(Number(templateId), null, fitRegions)
-    }
-
     const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(templateId) as any
     const tagRows = db.prepare(
       'SELECT tg.name FROM template_tags tt JOIN tags tg ON tt.tag_id = tg.id WHERE tt.template_id = ?'
     ).all(templateId) as any[]
 
-    const versionResult = db.prepare(
+    db.prepare(
       `INSERT INTO template_versions
        (template_id, version_number, version_label, description, name, category, width, height,
         image_url, fit_x, fit_y, fit_width, fit_height, permission, is_stable, user_id)
@@ -216,11 +188,6 @@ router.post('/', authMiddleware, templateUpload.single('image'), async (req: Req
       req.user!.id
     )
 
-    const versionId = versionResult.lastInsertRowid
-    if (Array.isArray(fitRegions) && fitRegions.length > 0) {
-      saveFitRegions(null, Number(versionId), fitRegions)
-    }
-
     let qualityReport = null
     try {
       qualityReport = await runQualityInspection(Number(templateId))
@@ -235,7 +202,7 @@ router.post('/', authMiddleware, templateUpload.single('image'), async (req: Req
 
     res.status(201).json({
       success: true,
-      data: { ...template, tags: tagRows.map(t => t.name), fitRegions: getFitRegions(Number(templateId), null), qualityReport }
+      data: { ...template, tags: tagRows.map(t => t.name), qualityReport }
     })
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message })
@@ -296,27 +263,6 @@ router.put('/:id', authMiddleware, templateUpload.single('image'), async (req: R
       }
     }
 
-    if (req.body.fitRegions !== undefined) {
-      try {
-        const fitRegions = typeof req.body.fitRegions === 'string' 
-          ? JSON.parse(req.body.fitRegions) 
-          : req.body.fitRegions
-        if (Array.isArray(fitRegions) && fitRegions.length > 0) {
-          saveFitRegions(parseInt(req.params.id), null, fitRegions)
-          const firstFit = fitRegions[0]
-          db.prepare('UPDATE templates SET fit_x = ?, fit_y = ?, fit_width = ?, fit_height = ? WHERE id = ?').run(
-            Math.round(firstFit.x) || 0,
-            Math.round(firstFit.y) || 0,
-            Math.round(firstFit.width) || 0,
-            Math.round(firstFit.height) || 0,
-            req.params.id
-          )
-        }
-      } catch (e) {
-        console.error('Failed to save fit regions:', e)
-      }
-    }
-
     const updated = db.prepare('SELECT * FROM templates WHERE id = ?').get(req.params.id) as any
     const tagRows = db.prepare(
       'SELECT tg.name FROM template_tags tt JOIN tags tg ON tt.tag_id = tg.id WHERE tt.template_id = ?'
@@ -324,7 +270,7 @@ router.put('/:id', authMiddleware, templateUpload.single('image'), async (req: R
 
     res.json({
       success: true,
-      data: { ...updated, tags: tagRows.map(t => t.name), fitRegions: getFitRegions(updated.id, null) }
+      data: { ...updated, tags: tagRows.map(t => t.name) }
     })
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message })
@@ -393,58 +339,12 @@ router.get('/share/:token', async (req: Request, res: Response): Promise<void> =
 
     res.json({
       success: true,
-      data: { ...template, tags: tagRows.map(t => t.name), fitRegions: getFitRegions(template.id, null) }
+      data: { ...template, tags: tagRows.map(t => t.name) }
     })
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message })
   }
 })
-
-function getFitRegions(templateId?: number, versionId?: number): any[] {
-  let rows: any[] = []
-  if (templateId) {
-    rows = db.prepare(
-      'SELECT * FROM template_fit_regions WHERE template_id = ? ORDER BY sort_order, id'
-    ).all(templateId) as any[]
-  } else if (versionId) {
-    rows = db.prepare(
-      'SELECT * FROM template_fit_regions WHERE version_id = ? ORDER BY sort_order, id'
-    ).all(versionId) as any[]
-  }
-  return rows.map(r => ({
-    id: r.id,
-    name: r.name,
-    x: r.fit_x,
-    y: r.fit_y,
-    width: r.fit_width,
-    height: r.fit_height,
-    sortOrder: r.sort_order,
-  }))
-}
-
-function saveFitRegions(templateId: number | null, versionId: number | null, fitRegions: any[]) {
-  if (templateId) {
-    db.prepare('DELETE FROM template_fit_regions WHERE template_id = ?').run(templateId)
-  } else if (versionId) {
-    db.prepare('DELETE FROM template_fit_regions WHERE version_id = ?').run(versionId)
-  }
-
-  const insert = db.prepare(
-    'INSERT INTO template_fit_regions (template_id, version_id, name, fit_x, fit_y, fit_width, fit_height, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  )
-  fitRegions.forEach((fr, idx) => {
-    insert.run(
-      templateId,
-      versionId,
-      fr.name || `区域${idx + 1}`,
-      Math.round(fr.x) || 0,
-      Math.round(fr.y) || 0,
-      Math.round(fr.width) || 0,
-      Math.round(fr.height) || 0,
-      fr.sortOrder !== undefined ? fr.sortOrder : idx
-    )
-  })
-}
 
 function mapVersion(raw: any): any {
   return {
@@ -459,7 +359,6 @@ function mapVersion(raw: any): any {
     height: raw.height,
     imageUrl: raw.image_url,
     fitRegion: { x: raw.fit_x, y: raw.fit_y, width: raw.fit_width, height: raw.fit_height },
-    fitRegions: getFitRegions(null, raw.id),
     permission: raw.permission,
     isStable: raw.is_stable === 1,
     userId: raw.user_id,
@@ -584,29 +483,6 @@ router.post('/:id/versions', authMiddleware, templateUpload.single('image'), asy
     const { name, category, width, height, fit_x, fit_y, fit_width, fit_height, permission, description } = req.body
     const imageUrl = req.file ? `/uploads/templates/${req.file.filename}` : template.image_url
 
-    let fitRegions: any[] = []
-    if (req.body.fitRegions) {
-      try {
-        fitRegions = typeof req.body.fitRegions === 'string' 
-          ? JSON.parse(req.body.fitRegions) 
-          : req.body.fitRegions
-      } catch (e) {
-        console.error('Parse fitRegions failed:', e)
-      }
-    }
-
-    let primaryFitX = fit_x !== undefined ? (parseInt(fit_x) ?? template.fit_x) : template.fit_x
-    let primaryFitY = fit_y !== undefined ? (parseInt(fit_y) ?? template.fit_y) : template.fit_y
-    let primaryFitWidth = fit_width !== undefined ? (parseInt(fit_width) ?? template.fit_width) : template.fit_width
-    let primaryFitHeight = fit_height !== undefined ? (parseInt(fit_height) ?? template.fit_height) : template.fit_height
-
-    if (Array.isArray(fitRegions) && fitRegions.length > 0) {
-      primaryFitX = Math.round(fitRegions[0].x) || template.fit_x
-      primaryFitY = Math.round(fitRegions[0].y) || template.fit_y
-      primaryFitWidth = Math.round(fitRegions[0].width) || template.fit_width
-      primaryFitHeight = Math.round(fitRegions[0].height) || template.fit_height
-    }
-
     const latestVersion = db.prepare(
       'SELECT MAX(version_number) as max FROM template_versions WHERE template_id = ?'
     ).get(req.params.id) as any
@@ -629,10 +505,10 @@ router.post('/:id/versions', authMiddleware, templateUpload.single('image'), asy
         width !== undefined ? parseInt(width) || template.width : template.width,
         height !== undefined ? parseInt(height) || template.height : template.height,
         imageUrl,
-        primaryFitX,
-        primaryFitY,
-        primaryFitWidth,
-        primaryFitHeight,
+        fit_x !== undefined ? (parseInt(fit_x) ?? template.fit_x) : template.fit_x,
+        fit_y !== undefined ? (parseInt(fit_y) ?? template.fit_y) : template.fit_y,
+        fit_width !== undefined ? (parseInt(fit_width) ?? template.fit_width) : template.fit_width,
+        fit_height !== undefined ? (parseInt(fit_height) ?? template.fit_height) : template.fit_height,
         permission || template.permission,
         req.user!.id
       )
@@ -648,10 +524,10 @@ router.post('/:id/versions', authMiddleware, templateUpload.single('image'), asy
         width !== undefined ? parseInt(width) || template.width : template.width,
         height !== undefined ? parseInt(height) || template.height : template.height,
         imageUrl,
-        primaryFitX,
-        primaryFitY,
-        primaryFitWidth,
-        primaryFitHeight,
+        fit_x !== undefined ? (parseInt(fit_x) ?? template.fit_x) : template.fit_x,
+        fit_y !== undefined ? (parseInt(fit_y) ?? template.fit_y) : template.fit_y,
+        fit_width !== undefined ? (parseInt(fit_width) ?? template.fit_width) : template.fit_width,
+        fit_height !== undefined ? (parseInt(fit_height) ?? template.fit_height) : template.fit_height,
         permission || template.permission,
         req.params.id
       )
@@ -671,11 +547,6 @@ router.post('/:id/versions', authMiddleware, templateUpload.single('image'), asy
             }
           }
         }
-      }
-
-      if (Array.isArray(fitRegions) && fitRegions.length > 0) {
-        saveFitRegions(Number(req.params.id), null, fitRegions)
-        saveFitRegions(null, Number(versionId), fitRegions)
       }
 
       return versionId
@@ -755,11 +626,6 @@ router.post('/:id/versions/:versionId/rollback', authMiddleware, async (req: Req
         version.fit_x, version.fit_y, version.fit_width, version.fit_height,
         version.permission, req.params.id
       )
-
-      const versionFitRegions = getFitRegions(null, Number(req.params.versionId))
-      if (versionFitRegions.length > 0) {
-        saveFitRegions(Number(req.params.id), null, versionFitRegions)
-      }
     })
     tx()
 
@@ -770,7 +636,7 @@ router.post('/:id/versions/:versionId/rollback', authMiddleware, async (req: Req
 
     res.json({
       success: true,
-      data: { ...updated, tags: tagRows.map(t => t.name), fitRegions: getFitRegions(Number(req.params.id), null) }
+      data: { ...updated, tags: tagRows.map(t => t.name) }
     })
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message })
