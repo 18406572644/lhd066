@@ -193,6 +193,7 @@ export const useTemplateStore = defineStore('template', () => {
     const newVersion = mapVersion(res)
     versions.value.unshift(newVersion)
     activeVersion.value = newVersion
+    fetchTemplates()
     return newVersion
   }
 

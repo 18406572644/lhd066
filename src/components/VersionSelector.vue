@@ -14,7 +14,7 @@
       >
         <div class="vs-option">
           <span class="vs-label">{{ v.label }}</span>
-          <a-tag v-if="v.isStable" color="green" size="mini">稳定</a-tag>
+          <a-tag v-if="v.isStable" color="green" size="small">稳定</a-tag>
           <span class="vs-dot" v-if="v.isLatest" />
         </div>
       </a-option>

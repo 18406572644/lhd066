@@ -35,6 +35,9 @@ async function request<T>(method: string, path: string, data?: unknown): Promise
     throw new Error(err.error || res.statusText)
   }
   const json = await res.json()
+  if (json.success === false) {
+    throw new Error(json.error || '操作失败')
+  }
   return ('data' in json ? json.data : json) as T
 }
 
@@ -75,5 +78,8 @@ export async function upload<T>(path: string, formData: FormData): Promise<T> {
     throw new Error(err.error || res.statusText)
   }
   const json = await res.json()
+  if (json.success === false) {
+    throw new Error(json.error || '操作失败')
+  }
   return ('data' in json ? json.data : json) as T
 }

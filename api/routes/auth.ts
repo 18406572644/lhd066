@@ -95,4 +95,60 @@ router.get('/me', authMiddleware, async (req: Request, res: Response): Promise<v
   }
 })
 
+router.post('/profile', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name } = req.body
+    const userId = req.user!.id
+
+    if (!name || !name.trim()) {
+      res.status(400).json({ success: false, error: 'Name is required' })
+      return
+    }
+
+    db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name.trim(), userId)
+
+    const user = db.prepare('SELECT id, email, name, role, avatar, created_at FROM users WHERE id = ?').get(userId) as any
+
+    res.json({ success: true, data: user })
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+router.post('/password', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { currentPassword, newPassword } = req.body
+    const userId = req.user!.id
+
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ success: false, error: 'Current password and new password are required' })
+      return
+    }
+
+    if (newPassword.length < 6) {
+      res.status(400).json({ success: false, error: 'New password must be at least 6 characters' })
+      return
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any
+    if (!user) {
+      res.status(404).json({ success: false, error: 'User not found' })
+      return
+    }
+
+    const validPassword = bcryptjs.compareSync(currentPassword, user.password_hash)
+    if (!validPassword) {
+      res.status(400).json({ success: false, error: 'Current password is incorrect' })
+      return
+    }
+
+    const newPasswordHash = bcryptjs.hashSync(newPassword, 10)
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newPasswordHash, userId)
+
+    res.json({ success: true, data: { message: 'Password updated successfully' } })
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
 export default router

@@ -216,6 +216,7 @@ import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMockupStore } from '@/stores/mockup'
 import { useTemplateStore, type Template, type TemplateVersion } from '@/stores/template'
+import { useHistoryStore } from '@/stores/history'
 import type { Guide } from '@/stores/mockup'
 import { Message } from '@arco-design/web-vue'
 import type { FileItem } from '@arco-design/web-vue'
@@ -224,6 +225,7 @@ import VersionSelector from '@/components/VersionSelector.vue'
 const route = useRoute()
 const mockupStore = useMockupStore()
 const templateStore = useTemplateStore()
+const historyStore = useHistoryStore()
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const canvasWrapperRef = ref<HTMLDivElement | null>(null)
 const rulerHRef = ref<HTMLDivElement | null>(null)
@@ -582,6 +584,7 @@ async function onGenerate() {
   try {
     await mockupStore.generateMockup()
     Message.success('生成成功')
+    historyStore.fetchHistory()
   } catch (e: any) {
     Message.error(e.message || '生成失败')
   }

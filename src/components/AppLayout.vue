@@ -12,9 +12,13 @@
         <SidebarIcon :icon="BarChart3" label="数据统计" to="/stats" :active="isActive('/stats')" />
       </div>
       <div class="sidebar-bottom">
-        <SidebarIcon :icon="Settings" label="设置" to="" />
-        <a-tooltip content="用户" position="right" mini>
-          <div class="sidebar-icon-btn" @click="handleUserClick">
+        <SidebarIcon :icon="Settings" label="设置" to="/settings" :active="isActive('/settings')" />
+        <a-tooltip content="个人中心" position="right" mini>
+          <div
+            class="sidebar-icon-btn"
+            :class="{ 'sidebar-icon-btn-active': isActive('/settings') }"
+            @click="handleUserClick"
+          >
             <User :size="20" />
           </div>
         </a-tooltip>
@@ -64,6 +68,7 @@ const breadcrumbs = computed(() => {
     'batch-history': ['批量生成', '任务历史'],
     history: ['历史记录'],
     stats: ['数据统计'],
+    settings: ['账户设置'],
   }
   return map[route.name as string] || ['MockupStudio']
 })
@@ -76,8 +81,7 @@ function isActive(path: string) {
 
 function handleUserClick() {
   if (auth.isAuthenticated) {
-    auth.logout()
-    router.push('/login')
+    router.push('/settings')
   } else {
     router.push('/login')
   }
@@ -99,5 +103,9 @@ function handleUserClick() {
 .sidebar-icon-btn:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.08);
+}
+.sidebar-icon-btn-active {
+  color: #007AFF;
+  background: rgba(0, 122, 255, 0.1);
 }
 </style>
