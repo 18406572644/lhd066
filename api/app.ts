@@ -21,6 +21,7 @@ import exportRoutes from './routes/export.js'
 import analyticsRoutes from './routes/analytics.js'
 import qualityRoutes from './routes/quality.js'
 import imageProcessingRoutes from './routes/imageProcessing.js'
+import brandPackRoutes from './routes/brandPacks.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -47,6 +48,7 @@ app.use('/api/export', exportRoutes)
 app.use('/api/analytics', analyticsRoutes)
 app.use('/api/quality', qualityRoutes)
 app.use('/api/image-processing', imageProcessingRoutes)
+app.use('/api/brand-packs', brandPackRoutes)
 
 app.use(
   '/api/health',

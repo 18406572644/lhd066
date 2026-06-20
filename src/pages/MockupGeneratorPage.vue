@@ -32,6 +32,81 @@
         </div>
       </div>
 
+      <div v-if="brandStore.brandPacks.length > 0" class="mt-4">
+        <div class="section-title">
+          <Briefcase :size="14" class="mr-1" />
+          品牌包
+        </div>
+        <a-select
+          v-model="selectedBrandPackId"
+          placeholder="选择品牌包（可选）"
+          allow-clear
+          @change="onBrandPackChange"
+        >
+          <a-option
+            v-for="pack in brandStore.brandPacks"
+            :key="pack.id"
+            :value="pack.id"
+          >
+            <div class="brand-pack-option">
+              <div class="brand-pack-color-preview">
+                <div
+                  v-for="(c, i) in pack.primaryColors.slice(0, 3)"
+                  :key="i"
+                  class="color-dot"
+                  :style="{ backgroundColor: c.hex }"
+                />
+                <div v-if="pack.primaryColors.length === 0" class="color-dot-empty" />
+              </div>
+              <span class="brand-pack-name">{{ pack.name }}</span>
+              <a-tag v-if="pack.brandPrefix" color="arcoblue" size="small">{{ pack.brandPrefix }}</a-tag>
+            </div>
+          </a-option>
+        </a-select>
+
+        <div v-if="selectedBrandPack" class="brand-pack-details mt-3">
+          <div v-if="selectedBrandPack.logos.length > 0" class="mt-2">
+            <div class="field-label mb-2">选择 Logo</div>
+            <div class="logo-selector">
+              <div
+                v-for="logo in selectedBrandPack.logos"
+                :key="logo.id"
+                class="logo-selector-item"
+                :class="{ 'logo-selected': selectedLogoId === logo.id || (selectedLogoId === null && logo.id === selectedBrandPack.logos[0]?.id) }"
+                @click="selectedLogoId = logo.id"
+              >
+                <img :src="logo.imageUrl" :alt="logo.name" />
+              </div>
+            </div>
+          </div>
+          <div v-if="allBrandColors.length > 0" class="mt-3">
+            <div class="field-label mb-2">品牌色板（点击作为背景色）</div>
+            <div class="brand-palette">
+              <div
+                v-for="(color, idx) in allBrandColors"
+                :key="idx"
+                class="palette-swatch"
+                :class="{ 'palette-selected': selectedBackgroundColor === color.hex }"
+                :style="{ backgroundColor: color.hex }"
+                :title="`${color.name}: ${color.hex}`"
+                @click="toggleBackgroundColor(color.hex)"
+              />
+            </div>
+          </div>
+          <div class="brand-info-tags mt-3">
+            <a-tag v-if="selectedBrandPack.brandPrefix" color="arcoblue" size="small">
+              导出前缀: {{ selectedBrandPack.brandPrefix }}
+            </a-tag>
+            <a-tag v-if="selectedBrandPack.fonts.length > 0" color="purple" size="small">
+              {{ selectedBrandPack.fonts.length }} 字体
+            </a-tag>
+            <a-tag v-if="selectedBrandPack.assets.length > 0" color="cyan" size="small">
+              {{ selectedBrandPack.assets.length }} 素材
+            </a-tag>
+          </div>
+        </div>
+      </div>
+
       <div class="section-title mt-4">设计图</div>
       <a-upload
         :auto-upload="false"
@@ -195,6 +270,18 @@
             }"
             :style="getSnapGuideStyle(guide)"
           ></div>
+
+          <div
+            v-for="region in brandStore.logoRegions"
+            :key="'logo-region-' + region.id"
+            class="logo-region-box"
+            :style="getLogoRegionStyle(region)"
+          >
+            <div class="logo-region-label">
+              <Briefcase :size="10" />
+              {{ region.label }}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -325,6 +412,7 @@ import { useMockupStore } from '@/stores/mockup'
 import { useTemplateStore, type Template, type TemplateVersion } from '@/stores/template'
 import { useHistoryStore } from '@/stores/history'
 import { useImageProcessingStore } from '@/stores/imageProcessing'
+import { useBrandPackStore } from '@/stores/brandPack'
 import type { Guide } from '@/stores/mockup'
 import { upload } from '@/utils/api'
 import { Message } from '@arco-design/web-vue'
@@ -333,7 +421,7 @@ import VersionSelector from '@/components/VersionSelector.vue'
 import MaskEditor from '@/components/MaskEditor.vue'
 import LightingPanel from '@/components/LightingPanel.vue'
 import BackgroundEditor from '@/components/BackgroundEditor.vue'
-import { Scissors, Palette, Wand2 } from 'lucide-vue-next'
+import { Scissors, Palette, Wand2, Briefcase } from 'lucide-vue-next'
 
 const route = useRoute()
 const mockupStore = useMockupStore()
@@ -351,10 +439,27 @@ const uploadedDesignUrl = ref<string | null>(null)
 const showMaskEditor = ref(false)
 const activeTab = ref<'lighting' | 'background' | 'adjust'>('lighting')
 
+const brandStore = useBrandPackStore()
+const selectedBrandPackId = ref<number | null>(null)
+const selectedLogoId = ref<number | null>(null)
+const selectedBackgroundColor = ref<string | null>(null)
+const brandLogoImages = ref<Record<number, HTMLImageElement>>({})
+const lastGeneratedFilename = ref<string | null>(null)
+
 const selectedVersionId = ref<number | null>(null)
 const selectedVersionInfo = computed<TemplateVersion | null>(() =>
   templateStore.activeVersion ?? (templateStore.versions.find(v => v.id === selectedVersionId.value) || null)
 )
+
+const selectedBrandPack = computed(() => {
+  if (!selectedBrandPackId.value) return null
+  return brandStore.brandPacks.find(p => p.id === selectedBrandPackId.value) || null
+})
+
+const allBrandColors = computed(() => {
+  if (!selectedBrandPack.value) return []
+  return [...selectedBrandPack.value.primaryColors, ...selectedBrandPack.value.secondaryColors]
+})
 
 let templateImg: HTMLImageElement | null = null
 let designImg: HTMLImageElement | null = null
@@ -429,6 +534,12 @@ onMounted(async () => {
   window.addEventListener('mouseup', onMouseUp, true)
 
   try {
+    await brandStore.fetchBrandPacks()
+  } catch (e) {
+    console.warn('Brand packs fetch failed', e)
+  }
+
+  try {
     await templateStore.fetchTemplates()
   } catch (e) {
     console.warn('Template fetch failed, using test template', e)
@@ -479,6 +590,10 @@ function selectTemplate(tpl: Template) {
   mockupStore.resultUrl = null
   mockupStore.activeSnapGuides = []
   mockupStore.loadGuides()
+
+  if (selectedBrandPackId.value) {
+    loadLogoRegions()
+  }
 
   displayScale = Math.min(600 / tpl.width, 450 / tpl.height, 1)
 
@@ -533,6 +648,56 @@ function onSelectVersion(v: TemplateVersion) {
       renderCanvas()
       updateRulers()
     })
+  }
+}
+
+function onBrandPackChange(packId: number | null) {
+  selectedLogoId.value = null
+  selectedBackgroundColor.value = null
+  if (packId) {
+    const pack = brandStore.brandPacks.find(p => p.id === packId)
+    if (pack && pack.logos.length > 0) {
+      selectedLogoId.value = pack.logos[0].id
+      preloadLogos(pack.logos)
+    }
+  }
+  if (mockupStore.currentTemplate) {
+    loadLogoRegions()
+  }
+  renderCanvas()
+}
+
+async function loadLogoRegions() {
+  if (!mockupStore.currentTemplate) return
+  await brandStore.fetchLogoRegions(mockupStore.currentTemplate.id)
+  renderCanvas()
+}
+
+function preloadLogos(logos: any[]) {
+  for (const logo of logos) {
+    if (!brandLogoImages.value[logo.id]) {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        brandLogoImages.value[logo.id] = img
+        renderCanvas()
+      }
+      img.src = logo.imageUrl
+    }
+  }
+}
+
+function toggleBackgroundColor(hex: string) {
+  selectedBackgroundColor.value = selectedBackgroundColor.value === hex ? null : hex
+  renderCanvas()
+}
+
+function getLogoRegionStyle(region: any) {
+  return {
+    left: (region.posX * displayScale) + 'px',
+    top: (region.posY * displayScale) + 'px',
+    width: (region.width * displayScale) + 'px',
+    height: (region.height * displayScale) + 'px',
   }
 }
 
@@ -721,6 +886,75 @@ function renderCanvas() {
     const dw = fit.width * mockupStore.scale.x * displayScale
     const dh = fit.height * mockupStore.scale.y * displayScale
     ctx.drawImage(designImg, dx, dy, dw, dh)
+  }
+
+  if (brandStore.logoRegions.length > 0) {
+    for (const region of brandStore.logoRegions) {
+      ctx.save()
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)'
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.08)'
+      ctx.lineWidth = 2
+      ctx.setLineDash([6 * displayScale, 4 * displayScale])
+      const rx = region.posX * displayScale
+      const ry = region.posY * displayScale
+      const rw = region.width * displayScale
+      const rh = region.height * displayScale
+      ctx.fillRect(rx, ry, rw, rh)
+      ctx.strokeRect(rx, ry, rw, rh)
+      ctx.setLineDash([])
+      
+      ctx.fillStyle = '#10B981'
+      ctx.font = `bold ${10 * displayScale}px sans-serif`
+      ctx.fillRect(rx, ry - 16 * displayScale, 60 * displayScale, 16 * displayScale)
+      ctx.fillStyle = '#ffffff'
+      ctx.textAlign = 'left'
+      ctx.fillText(region.label.substring(0, 8), rx + 4 * displayScale, ry - 4 * displayScale)
+      ctx.restore()
+    }
+  }
+
+  if (selectedBrandPack.value && selectedLogoId.value !== null && brandStore.logoRegions.length > 0) {
+    const logoImg = brandLogoImages.value[selectedLogoId.value]
+    if (logoImg) {
+      for (const region of brandStore.logoRegions) {
+        try {
+          const rx = region.posX * displayScale
+          const ry = region.posY * displayScale
+          const rw = region.width * displayScale
+          const rh = region.height * displayScale
+          
+          const imgRatio = logoImg.width / logoImg.height
+          const regionRatio = rw / rh
+          
+          let drawW, drawH
+          if (imgRatio > regionRatio) {
+            drawW = rw
+            drawH = rw / imgRatio
+          } else {
+            drawH = rh
+            drawW = rh * imgRatio
+          }
+          
+          const drawX = rx + (rw - drawW) / 2
+          const drawY = ry + (rh - drawH) / 2
+          
+          ctx.save()
+          ctx.globalAlpha = 0.9
+          ctx.drawImage(logoImg, drawX, drawY, drawW, drawH)
+          ctx.restore()
+        } catch (e) {
+          console.warn('Logo draw failed', e)
+        }
+      }
+    }
+  }
+
+  if (selectedBackgroundColor.value) {
+    ctx.save()
+    ctx.globalCompositeOperation = 'destination-over'
+    ctx.fillStyle = selectedBackgroundColor.value
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.restore()
   }
 }
 
@@ -967,9 +1201,13 @@ async function onGenerate() {
       scaleY: mockupStore.scale.y,
       targetWidth,
       targetHeight,
+      brandPackId: selectedBrandPackId.value ?? undefined,
+      logoId: selectedLogoId.value ?? undefined,
+      backgroundColor: selectedBackgroundColor.value ?? undefined,
     })
 
     mockupStore.resultUrl = result.resultImageUrl
+    lastGeneratedFilename.value = result.filename || null
     Message.success('生成成功')
     historyStore.fetchHistory()
   } catch (e: any) {
@@ -983,7 +1221,8 @@ function onDownload() {
   if (!mockupStore.resultUrl) return
   const a = document.createElement('a')
   a.href = mockupStore.resultUrl
-  a.download = `mockup-${Date.now()}.${mockupStore.exportSettings.format}`
+  const filename = lastGeneratedFilename.value || `mockup-${Date.now()}.${mockupStore.exportSettings.format}`
+  a.download = filename
   a.click()
 }
 </script>
@@ -1438,5 +1677,140 @@ function onDownload() {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.brand-pack-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.brand-pack-color-preview {
+  display: flex;
+  gap: 2px;
+}
+
+.color-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.color-dot-empty {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  border: 1px dashed #d1d5db;
+}
+
+.brand-pack-name {
+  flex: 1;
+  font-size: 13px;
+}
+
+.brand-pack-details {
+  padding: 10px;
+  background: var(--color-fill-1);
+  border-radius: 8px;
+}
+
+.field-label {
+  font-size: 12px;
+  color: var(--color-text-3);
+  font-weight: 500;
+}
+
+.logo-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.logo-selector-item {
+  width: 52px;
+  height: 52px;
+  border: 2px solid var(--color-border-2);
+  border-radius: 6px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: #fff;
+}
+
+.logo-selector-item:hover {
+  border-color: var(--color-primary-6);
+}
+
+.logo-selector-item.logo-selected {
+  border-color: var(--color-primary-6);
+  background: var(--color-primary-1);
+  box-shadow: 0 0 0 2px var(--color-primary-2);
+}
+
+.logo-selector-item img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.brand-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.palette-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.palette-swatch:hover {
+  transform: scale(1.1);
+}
+
+.palette-swatch.palette-selected {
+  border-color: var(--color-primary-6);
+  box-shadow: 0 0 0 2px var(--color-primary-3);
+}
+
+.brand-info-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.logo-region-box {
+  position: absolute;
+  border: 2px dashed rgba(16, 185, 129, 0.6);
+  background: rgba(16, 185, 129, 0.05);
+  pointer-events: none;
+  border-radius: 4px;
+  z-index: 5;
+}
+
+.logo-region-label {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  background: #10B981;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
 }
 </style>

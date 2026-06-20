@@ -52,3 +52,66 @@ export const designUpload = multer({
   fileFilter: imageFilter,
   limits: { fileSize: 20 * 1024 * 1024 }
 })
+
+const brandLogoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.join(uploadsDir, 'brands', 'logos')
+    fs.mkdirSync(dir, { recursive: true })
+    cb(null, dir)
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `${Date.now()}-${file.originalname}`)
+  }
+})
+
+const brandAssetStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.join(uploadsDir, 'brands', 'assets')
+    fs.mkdirSync(dir, { recursive: true })
+    cb(null, dir)
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `${Date.now()}-${file.originalname}`)
+  }
+})
+
+const brandFontStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.join(uploadsDir, 'brands', 'fonts')
+    fs.mkdirSync(dir, { recursive: true })
+    cb(null, dir)
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `${Date.now()}-${file.originalname}`)
+  }
+})
+
+export const brandLogoUpload = multer({
+  storage: brandLogoStorage,
+  fileFilter: imageFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+})
+
+export const brandAssetUpload = multer({
+  storage: brandAssetStorage,
+  fileFilter: imageFilter,
+  limits: { fileSize: 20 * 1024 * 1024 }
+})
+
+const fontFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowedMimes = ['font/ttf', 'font/otf', 'font/woff', 'font/woff2', 'application/font-woff', 'application/font-woff2', 'application/x-font-ttf', 'application/x-font-otf']
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true)
+  } else {
+    cb(new Error('Only font files are allowed (ttf, otf, woff, woff2)'))
+  }
+}
+
+export const brandFontUpload = multer({
+  storage: brandFontStorage,
+  fileFilter: fontFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+})

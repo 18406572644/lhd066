@@ -14,6 +14,9 @@ fs.mkdirSync(dataDir, { recursive: true })
 fs.mkdirSync(path.join(uploadsDir, 'templates'), { recursive: true })
 fs.mkdirSync(path.join(uploadsDir, 'designs'), { recursive: true })
 fs.mkdirSync(path.join(uploadsDir, 'results'), { recursive: true })
+fs.mkdirSync(path.join(uploadsDir, 'brands', 'logos'), { recursive: true })
+fs.mkdirSync(path.join(uploadsDir, 'brands', 'assets'), { recursive: true })
+fs.mkdirSync(path.join(uploadsDir, 'brands', 'fonts'), { recursive: true })
 
 const dbPath = path.join(dataDir, 'mockup.db')
 const journalMode = process.env.SQLITE_JOURNAL_MODE || 'DELETE'
@@ -247,6 +250,61 @@ CREATE TABLE IF NOT EXISTS quality_reports (
 CREATE INDEX IF NOT EXISTS idx_quality_reports_template_id ON quality_reports(template_id);
 CREATE INDEX IF NOT EXISTS idx_quality_reports_grade ON quality_reports(grade);
 CREATE INDEX IF NOT EXISTS idx_quality_reports_review_status ON quality_reports(review_status);
+CREATE TABLE IF NOT EXISTS brand_packs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    brand_prefix TEXT NOT NULL DEFAULT '',
+    primary_colors TEXT NOT NULL DEFAULT '[]',
+    secondary_colors TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS brand_logos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand_pack_id INTEGER NOT NULL REFERENCES brand_packs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    size_label TEXT NOT NULL DEFAULT 'default',
+    format TEXT NOT NULL DEFAULT 'png',
+    image_url TEXT NOT NULL,
+    width INTEGER NOT NULL DEFAULT 0,
+    height INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS brand_fonts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand_pack_id INTEGER NOT NULL REFERENCES brand_packs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    font_family TEXT NOT NULL,
+    font_file_url TEXT,
+    font_weight TEXT NOT NULL DEFAULT '400',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS brand_assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand_pack_id INTEGER NOT NULL REFERENCES brand_packs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'other',
+    image_url TEXT NOT NULL,
+    width INTEGER NOT NULL DEFAULT 0,
+    height INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS template_logo_regions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    label TEXT NOT NULL DEFAULT 'Logo区域',
+    pos_x INTEGER NOT NULL DEFAULT 0,
+    pos_y INTEGER NOT NULL DEFAULT 0,
+    width INTEGER NOT NULL DEFAULT 100,
+    height INTEGER NOT NULL DEFAULT 100,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_brand_packs_user_id ON brand_packs(user_id);
+CREATE INDEX IF NOT EXISTS idx_brand_logos_pack_id ON brand_logos(brand_pack_id);
+CREATE INDEX IF NOT EXISTS idx_brand_fonts_pack_id ON brand_fonts(brand_pack_id);
+CREATE INDEX IF NOT EXISTS idx_brand_assets_pack_id ON brand_assets(brand_pack_id);
+CREATE INDEX IF NOT EXISTS idx_template_logo_regions_template_id ON template_logo_regions(template_id);
 `)
 
 const migrateColumns = [

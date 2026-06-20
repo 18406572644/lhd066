@@ -92,6 +92,12 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresAuth: true },
       },
       {
+        path: 'brand-packs',
+        name: 'brand-packs',
+        component: () => import('@/pages/BrandPackPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/pages/UserSettingsPage.vue'),

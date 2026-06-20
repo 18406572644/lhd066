@@ -12,6 +12,7 @@
         <SidebarIcon :icon="BarChart3" label="数据统计" to="/stats" :active="isActive('/stats')" />
         <SidebarIcon :icon="Download" label="数据导出" to="/export" :active="isActive('/export')" />
         <SidebarIcon :icon="TrendingUp" label="分析报告" to="/analytics" :active="isActive('/analytics')" />
+        <SidebarIcon :icon="Briefcase" label="品牌包管理" to="/brand-packs" :active="isActive('/brand-packs')" />
       </div>
       <div class="sidebar-bottom">
         <SidebarIcon :icon="Settings" label="设置" to="/settings" :active="isActive('/settings')" />
@@ -49,7 +50,7 @@
 <script setup lang="ts">
 import { computed, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LayoutGrid, Plus, Wand2, Layers, Clock, BarChart3, Settings, User, Download, TrendingUp } from 'lucide-vue-next'
+import { LayoutGrid, Plus, Wand2, Layers, Clock, BarChart3, Settings, User, Download, TrendingUp, Palette, Briefcase } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import SidebarIcon from './SidebarIcon.vue'
 import NotificationCenter from './NotificationCenter.vue'
@@ -72,6 +73,7 @@ const breadcrumbs = computed(() => {
     stats: ['数据统计'],
     'data-export': ['数据导出'],
     'analytics-report': ['分析报告'],
+    'brand-packs': ['品牌包管理'],
     settings: ['账户设置'],
   }
   return map[route.name as string] || ['MockupStudio']

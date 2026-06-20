@@ -22,6 +22,7 @@ import {
   type BackgroundReplaceParams,
   type LightingAdjustParams,
 } from '../utils/imageProcessing.js'
+import db from '../db.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -411,6 +412,33 @@ router.get('/background/list', (_req: Request, res: Response): void => {
   }
 })
 
+interface LogoRegion {
+  id: number
+  template_id: number
+  label: string
+  pos_x: number
+  pos_y: number
+  width: number
+  height: number
+}
+
+function getTemplateIdFromImageUrl(imageUrl: string): number | null {
+  try {
+    const stmt = db.prepare('SELECT id FROM templates WHERE image_url = ?')
+    const row = stmt.get(imageUrl) as any
+    return row?.id || null
+  } catch (e) {
+    return null
+  }
+}
+
+function generateCompositeFilename(prefix: string | null, timestamp: number, ext: string = 'png'): string {
+  if (prefix) {
+    return `${prefix}composite-${timestamp}.${ext}`
+  }
+  return `result-composite-${timestamp}.${ext}`
+}
+
 router.post('/generate-with-all', async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -427,6 +455,9 @@ router.post('/generate-with-all', async (req: Request, res: Response): Promise<v
       scaleY,
       targetWidth,
       targetHeight,
+      brandPackId = null,
+      logoId = null,
+      backgroundColor = null,
     } = req.body
 
     if (!templateImageUrl || !designImageUrl) {
@@ -446,6 +477,43 @@ router.post('/generate-with-all', async (req: Request, res: Response): Promise<v
     const exportWidth = targetWidth || templateMeta.width || 800
     const exportHeight = targetHeight || templateMeta.height || 600
 
+    let brandPrefix: string | null = null
+    const templateId = getTemplateIdFromImageUrl(templateImageUrl)
+    let logoRegions: LogoRegion[] = []
+    let selectedLogo: any = null
+
+    if (brandPackId) {
+      try {
+        const brandPack = db.prepare(
+          'SELECT * FROM brand_packs WHERE id = ?'
+        ).get(brandPackId) as any
+        if (brandPack) {
+          brandPrefix = brandPack.brand_prefix || null
+        }
+
+        if (templateId) {
+          logoRegions = db.prepare(
+            'SELECT * FROM template_logo_regions WHERE template_id = ? ORDER BY id'
+          ).all(templateId) as LogoRegion[]
+        }
+
+        let logos: any[] = []
+        if (logoId) {
+          logos = db.prepare(
+            'SELECT * FROM brand_logos WHERE id = ? AND brand_pack_id = ?'
+          ).all(logoId, brandPackId) as any[]
+        } else {
+          logos = db.prepare(
+            'SELECT * FROM brand_logos WHERE brand_pack_id = ? ORDER BY id LIMIT 1'
+          ).all(brandPackId) as any[]
+        }
+        selectedLogo = logos[0] || null
+      } catch (bpError) {
+        console.warn('Brand pack processing error:', bpError)
+      }
+    }
+
+    const compositeLayers: any[] = []
     let processedDesignPath = designPath
     const timestamp = Date.now()
 
@@ -471,6 +539,7 @@ router.post('/generate-with-all', async (req: Request, res: Response): Promise<v
     }
 
     let compositeResult: string
+    let finalFilename: string
 
     if (backgroundParams && backgroundParams.type) {
       const bgReplacedFilename = `composite-bg-${timestamp}.png`
@@ -499,19 +568,52 @@ router.post('/generate-with-all', async (req: Request, res: Response): Promise<v
         .resize(finalWidth, finalHeight, { fit: 'fill' })
         .toBuffer()
 
-      const resultBuffer = await sharp(templateWithBgPath)
-        .resize(exportWidth, exportHeight)
-        .composite([
-          {
-            input: designBuffer,
-            left: posX,
-            top: posY,
-          },
-        ])
+      compositeLayers.push({
+        input: designBuffer,
+        left: posX,
+        top: posY,
+      })
+
+      if (logoRegions.length > 0 && selectedLogo) {
+        try {
+          const logoPath = imageUrlToFilePath(selectedLogo.image_url || selectedLogo.imageUrl)
+          if (fs.existsSync(logoPath)) {
+            for (const region of logoRegions) {
+              const regionScaledW = region.width
+              const regionScaledH = region.height
+              const regionScaledX = region.pos_x
+              const regionScaledY = region.pos_y
+              const logoBuffer = await sharp(logoPath)
+                .resize(regionScaledW, regionScaledH, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .toBuffer()
+              compositeLayers.push({
+                input: logoBuffer,
+                left: regionScaledX,
+                top: regionScaledY
+              })
+            }
+          }
+        } catch (logoErr) {
+          console.warn('Logo compositing failed:', logoErr)
+        }
+      }
+
+      let pipeline = sharp(templateWithBgPath).resize(exportWidth, exportHeight)
+      if (backgroundColor) {
+        try {
+          const bgColor = backgroundColor.startsWith('#') ? backgroundColor : `#${backgroundColor}`
+          pipeline = pipeline.flatten({ background: bgColor })
+        } catch (e) {
+          console.warn('Invalid background color:', backgroundColor)
+        }
+      }
+
+      const resultBuffer = await pipeline
+        .composite(compositeLayers)
         .png()
         .toBuffer()
 
-      const finalFilename = `result-composite-${timestamp}.png`
+      finalFilename = generateCompositeFilename(brandPrefix, timestamp)
       const finalPath = path.resolve(projectRoot, 'uploads', 'results', finalFilename)
       await sharp(resultBuffer).toFile(finalPath)
       compositeResult = finalPath
@@ -525,29 +627,74 @@ router.post('/generate-with-all', async (req: Request, res: Response): Promise<v
         .resize(finalWidth, finalHeight, { fit: 'fill' })
         .toBuffer()
 
-      const resultBuffer = await sharp(templatePath)
-        .resize(exportWidth, exportHeight)
-        .composite([
-          {
-            input: designBuffer,
-            left: posX,
-            top: posY,
-          },
-        ])
+      compositeLayers.push({
+        input: designBuffer,
+        left: posX,
+        top: posY,
+      })
+
+      if (logoRegions.length > 0 && selectedLogo) {
+        try {
+          const logoPath = imageUrlToFilePath(selectedLogo.image_url || selectedLogo.imageUrl)
+          if (fs.existsSync(logoPath)) {
+            for (const region of logoRegions) {
+              const regionScaledW = region.width
+              const regionScaledH = region.height
+              const regionScaledX = region.pos_x
+              const regionScaledY = region.pos_y
+              const logoBuffer = await sharp(logoPath)
+                .resize(regionScaledW, regionScaledH, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .toBuffer()
+              compositeLayers.push({
+                input: logoBuffer,
+                left: regionScaledX,
+                top: regionScaledY
+              })
+            }
+          }
+        } catch (logoErr) {
+          console.warn('Logo compositing failed:', logoErr)
+        }
+      }
+
+      let pipeline = sharp(templatePath).resize(exportWidth, exportHeight)
+      if (backgroundColor) {
+        try {
+          const bgColor = backgroundColor.startsWith('#') ? backgroundColor : `#${backgroundColor}`
+          pipeline = pipeline.flatten({ background: bgColor })
+        } catch (e) {
+          console.warn('Invalid background color:', backgroundColor)
+        }
+      }
+
+      const resultBuffer = await pipeline
+        .composite(compositeLayers)
         .png()
         .toBuffer()
 
-      const finalFilename = `result-composite-${timestamp}.png`
+      finalFilename = generateCompositeFilename(brandPrefix, timestamp)
       const finalPath = path.resolve(projectRoot, 'uploads', 'results', finalFilename)
       await sharp(resultBuffer).toFile(finalPath)
       compositeResult = finalPath
     }
 
+    const responseData: any = {
+      resultImageUrl: filePathToUrl(compositeResult),
+      filename: finalFilename,
+    }
+    if (brandPrefix) {
+      responseData.brandPrefix = brandPrefix
+    }
+    if (selectedLogo) {
+      responseData.appliedLogo = { 
+        id: selectedLogo.id, 
+        name: selectedLogo.name 
+      }
+    }
+
     res.json({
       success: true,
-      data: {
-        resultImageUrl: filePathToUrl(compositeResult),
-      },
+      data: responseData,
     })
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message })

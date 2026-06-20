@@ -307,10 +307,18 @@ export const useImageProcessingStore = defineStore('imageProcessing', () => {
     scaleY: number
     targetWidth?: number
     targetHeight?: number
+    brandPackId?: number
+    logoId?: number
+    backgroundColor?: string
   }) {
     isGenerating.value = true
     try {
-      const result = await post<{ resultImageUrl: string }>('/image-processing/generate-with-all', {
+      const result = await post<{ 
+        resultImageUrl: string
+        filename?: string
+        brandPrefix?: string
+        appliedLogo?: { id: number; name: string }
+      }>('/image-processing/generate-with-all', {
         ...options,
         backgroundParams: options.backgroundParams || undefined,
         customLightingParams: options.customLightingParams || undefined,

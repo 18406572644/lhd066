@@ -2,6 +2,13 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { get, post, put, del } from '@/utils/api'
 
+export interface FitRegion {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface Template {
   id: number
   name: string
@@ -10,7 +17,7 @@ export interface Template {
   imageUrl: string
   width: number
   height: number
-  fitRegion: { x: number; y: number; width: number; height: number }
+  fitRegion: FitRegion
   tags: string[]
   useCount: number
   permission: string
@@ -32,7 +39,7 @@ export interface TemplateVersion {
   width: number
   height: number
   imageUrl: string
-  fitRegion: { x: number; y: number; width: number; height: number }
+  fitRegion: FitRegion
   permission: string
   isStable: boolean
   userId: number

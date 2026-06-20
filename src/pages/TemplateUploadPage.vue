@@ -66,7 +66,9 @@
       <a-steps :current="currentStep" changeable @change="currentStep = $event" class="mb-8">
         <a-step description="基本信息">基本信息</a-step>
         <a-step description="尺寸与图片">尺寸与图片</a-step>
-        <a-step description="适配区域与标签">适配区域与标签</a-step>
+        <a-step description="适配区域">适配区域</a-step>
+        <a-step description="Logo 区域">Logo 区域</a-step>
+        <a-step description="标签与权限">标签与权限</a-step>
       </a-steps>
 
       <div class="step-content">
@@ -155,7 +157,102 @@
                 }"
               />
             </div>
-            <a-form-item label="标签（建议≥3个）" class="mt-4">
+          </a-form>
+        </div>
+
+        <div v-if="currentStep === 4">
+          <div class="section-info">
+            <Briefcase :size="16" />
+            <span>设置模板中的 Logo 标记区域，使用品牌包生成样机时会自动将品牌 Logo 粘贴到这些位置。</span>
+          </div>
+          <div class="mt-4">
+            <div class="flex justify-between items-center mb-3">
+              <div class="field-title">Logo 区域列表</div>
+              <a-button size="small" type="outline" @click="addLogoRegion">
+                <template #icon><Plus :size="14" /></template>
+                添加 Logo 区域
+              </a-button>
+            </div>
+
+            <div v-if="logoRegions.length === 0" class="empty-hint">
+              暂无 Logo 区域，点击上方按钮添加。如不需要自动放置 Logo，可跳过此步。
+            </div>
+
+            <div v-else class="logo-regions-list">
+              <div
+                v-for="(region, index) in logoRegions"
+                :key="index"
+                class="logo-region-item"
+              >
+                <div class="logo-region-header">
+                  <a-input
+                    v-model="region.label"
+                    placeholder="区域名称（如：左上角Logo）"
+                    size="small"
+                    class="flex-1 mr-3"
+                  />
+                  <a-button
+                    type="text"
+                    size="mini"
+                    status="danger"
+                    @click="removeLogoRegion(index)"
+                  >
+                    <Trash2 :size="14" />
+                  </a-button>
+                </div>
+                <div class="fit-region-grid mt-2">
+                  <a-form-item label="X 位置" class="mb-0">
+                    <a-input-number v-model="region.posX" :min="0" :max="form.width" size="small" />
+                  </a-form-item>
+                  <a-form-item label="Y 位置" class="mb-0">
+                    <a-input-number v-model="region.posY" :min="0" :max="form.height" size="small" />
+                  </a-form-item>
+                  <a-form-item label="宽度" class="mb-0">
+                    <a-input-number v-model="region.width" :min="10" :max="form.width" size="small" />
+                  </a-form-item>
+                  <a-form-item label="高度" class="mb-0">
+                    <a-input-number v-model="region.height" :min="10" :max="form.height" size="small" />
+                  </a-form-item>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="imagePreview && logoRegions.length > 0"
+              class="fit-preview mt-4"
+            >
+              <img :src="imagePreview" alt="preview" />
+              <div
+                v-for="(region, idx) in logoRegions"
+                :key="idx"
+                class="logo-region-box"
+                :style="{
+                  left: (region.posX / form.width * 100) + '%',
+                  top: (region.posY / form.height * 100) + '%',
+                  width: (region.width / form.width * 100) + '%',
+                  height: (region.height / form.height * 100) + '%',
+                }"
+              >
+                <span class="logo-region-tag">{{ region.label }}</span>
+              </div>
+            </div>
+
+            <div v-if="logoRegions.length > 0" class="quick-presets mt-4">
+              <div class="field-title mb-2">快捷位置</div>
+              <div class="flex gap-2 flex-wrap">
+                <a-tag class="preset-tag" @click="applyLogoPreset('top-left')">左上角</a-tag>
+                <a-tag class="preset-tag" @click="applyLogoPreset('top-right')">右上角</a-tag>
+                <a-tag class="preset-tag" @click="applyLogoPreset('bottom-left')">左下角</a-tag>
+                <a-tag class="preset-tag" @click="applyLogoPreset('bottom-right')">右下角</a-tag>
+                <a-tag class="preset-tag" @click="applyLogoPreset('center')">居中</a-tag>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="currentStep === 5">
+          <a-form :model="form" layout="vertical">
+            <a-form-item label="标签（建议≥3个）">
               <a-input-tag v-model="form.tags" placeholder="添加标签后按回车" />
             </a-form-item>
             <a-form-item label="权限">
@@ -171,7 +268,7 @@
       <div class="flex justify-between mt-6">
         <a-button v-if="currentStep > 1" @click="currentStep--">上一步</a-button>
         <div v-else />
-        <a-button v-if="currentStep < 3" type="primary" @click="currentStep++">下一步</a-button>
+        <a-button v-if="currentStep < 5" type="primary" @click="currentStep++">下一步</a-button>
         <a-button v-else type="primary" :loading="submitting" @click="onSubmit">提交模板</a-button>
       </div>
     </div>
@@ -179,9 +276,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTemplateStore } from '@/stores/template'
+import { useBrandPackStore } from '@/stores/brandPack'
+import { Plus, Trash2, Briefcase } from 'lucide-vue-next'
 import { Message } from '@arco-design/web-vue'
 import type { FileItem } from '@arco-design/web-vue'
 
@@ -206,6 +305,18 @@ const imagePreview = ref<string | null>(null)
 const imageFile = ref<File | null>(null)
 const qualityReport = ref<QualityReport | null>(null)
 const createdTemplateId = ref<number | null>(null)
+
+const brandStore = useBrandPackStore()
+
+interface LogoRegionInput {
+  label: string
+  posX: number
+  posY: number
+  width: number
+  height: number
+}
+
+const logoRegions = ref<LogoRegionInput[]>([])
 
 const sizePresets = [
   { label: '1080×1920', w: 1080, h: 1920 },
@@ -277,6 +388,21 @@ async function onSubmit() {
     fd.append('image', imageFile.value)
     const result = await store.createTemplate(fd) as any
     createdTemplateId.value = result.id
+
+    if (logoRegions.value.length > 0 && result.id) {
+      try {
+        await brandStore.saveLogoRegions(result.id, logoRegions.value.map(r => ({
+          label: r.label,
+          posX: r.posX,
+          posY: r.posY,
+          width: r.width,
+          height: r.height
+        })))
+      } catch (e) {
+        console.warn('Save logo regions failed:', e)
+      }
+    }
+
     if (result.qualityReport) {
       qualityReport.value = result.qualityReport
     } else {
@@ -293,6 +419,7 @@ async function onSubmit() {
 function resetForm() {
   qualityReport.value = null
   createdTemplateId.value = null
+  logoRegions.value = []
   form.name = ''
   form.category = ''
   form.description = ''
@@ -320,6 +447,59 @@ function viewQualityReport() {
   if (createdTemplateId.value) {
     router.push(`/template/${createdTemplateId.value}/quality`)
   }
+}
+
+function addLogoRegion() {
+  logoRegions.value.push({
+    label: `Logo区域${logoRegions.value.length + 1}`,
+    posX: Math.round(form.width * 0.05),
+    posY: Math.round(form.height * 0.05),
+    width: Math.round(form.width * 0.15),
+    height: Math.round(form.width * 0.15 * 0.4),
+  })
+}
+
+function removeLogoRegion(index: number) {
+  logoRegions.value.splice(index, 1)
+}
+
+function applyLogoPreset(preset: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center') {
+  const w = Math.round(form.width * 0.18)
+  const h = Math.round(w * 0.4)
+  const margin = Math.round(form.width * 0.05)
+  
+  let posX = margin, posY = margin
+  
+  switch (preset) {
+    case 'top-left':
+      posX = margin
+      posY = margin
+      break
+    case 'top-right':
+      posX = form.width - w - margin
+      posY = margin
+      break
+    case 'bottom-left':
+      posX = margin
+      posY = form.height - h - margin
+      break
+    case 'bottom-right':
+      posX = form.width - w - margin
+      posY = form.height - h - margin
+      break
+    case 'center':
+      posX = Math.round((form.width - w) / 2)
+      posY = Math.round((form.height - h) / 2)
+      break
+  }
+  
+  logoRegions.value.push({
+    label: `${preset === 'top-left' ? '左上' : preset === 'top-right' ? '右上' : preset === 'bottom-left' ? '左下' : preset === 'bottom-right' ? '右下' : '居中'}Logo`,
+    posX,
+    posY,
+    width: w,
+    height: h
+  })
 }
 </script>
 
@@ -423,5 +603,95 @@ function viewQualityReport() {
 }
 .ml-2 {
   margin-left: 8px;
+}
+
+.ml-3 {
+  margin-left: 12px;
+}
+
+.mr-3 {
+  margin-right: 12px;
+}
+
+.section-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--color-primary-1);
+  border-radius: 8px;
+  color: var(--color-primary-6);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.field-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.empty-hint {
+  padding: 24px;
+  text-align: center;
+  color: var(--color-text-3);
+  font-size: 13px;
+  background: var(--color-fill-1);
+  border-radius: 8px;
+}
+
+.logo-regions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.logo-region-item {
+  padding: 14px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 8px;
+  background: var(--color-bg-2);
+}
+
+.logo-region-header {
+  display: flex;
+  align-items: center;
+}
+
+.logo-region-box {
+  position: absolute;
+  border: 2px dashed #10B981;
+  background: rgba(16, 185, 129, 0.12);
+  border-radius: 2px;
+  overflow: visible;
+}
+
+.logo-region-tag {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  background: #10B981;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.quick-presets {
+  padding: 12px;
+  background: var(--color-fill-1);
+  border-radius: 8px;
+}
+
+.preset-tag {
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.preset-tag:hover {
+  background: var(--color-primary-1);
+  border-color: var(--color-primary-6);
+  color: var(--color-primary-6);
 }
 </style>
