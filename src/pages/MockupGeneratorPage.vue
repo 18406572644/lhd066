@@ -561,6 +561,8 @@ function onDesignChange(fileItemList: FileItem[]) {
       mockupStore.designImage = e.target?.result as string
     }
     reader.readAsDataURL(file)
+
+    uploadDesignToServer(file)
   } else {
     mockupStore.designFile = null
     mockupStore.designImage = null
@@ -569,17 +571,33 @@ function onDesignChange(fileItemList: FileItem[]) {
   }
 }
 
+async function uploadDesignToServer(file: File) {
+  try {
+    const fd = new FormData()
+    fd.append('image', file)
+    const uploadRes = await upload<{ url: string; width: number; height: number }>('/upload/design-image', fd)
+    uploadedDesignUrl.value = uploadRes.url
+    imageStore.setOriginalImage(uploadRes.url)
+  } catch (e: any) {
+    console.warn('设计图上传服务器失败:', e.message)
+  }
+}
+
 async function onRemoveBackground() {
   if (!mockupStore.designFile) return
 
   try {
-    const fd = new FormData()
-    fd.append('image', mockupStore.designFile)
-    const uploadRes = await upload<{ url: string; width: number; height: number }>('/upload/design-image', fd)
-    uploadedDesignUrl.value = uploadRes.url
-    imageStore.setOriginalImage(uploadRes.url)
+    let designUrl = uploadedDesignUrl.value
+    if (!designUrl) {
+      const fd = new FormData()
+      fd.append('image', mockupStore.designFile)
+      const uploadRes = await upload<{ url: string; width: number; height: number }>('/upload/design-image', fd)
+      designUrl = uploadRes.url
+      uploadedDesignUrl.value = uploadRes.url
+      imageStore.setOriginalImage(uploadRes.url)
+    }
 
-    await imageStore.removeBackground(uploadRes.url)
+    await imageStore.removeBackground(designUrl)
 
     if (imageStore.processedImageUrl) {
       const img = new Image()
@@ -597,24 +615,23 @@ async function onRemoveBackground() {
   }
 }
 
-function onMaskConfirmed(maskUrl: string) {
-  Message.success('蒙版已更新')
-  showMaskEditor.value = false
-
-  if (imageStore.originalImageUrl) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
+async function onMaskConfirmed(maskUrl: string) {
+  try {
+    const result = await imageStore.applyMaskToCurrent()
+    if (result?.processedImageUrl) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => {
         designImg = img
         renderCanvas()
       }
-      img.src = e.target?.result as string
+      img.src = result.processedImageUrl + '?t=' + Date.now()
     }
-    fetch(imageStore.originalImageUrl)
-      .then(r => r.blob())
-      .then(b => reader.readAsDataURL(b))
+    Message.success('蒙版已更新')
+  } catch (e: any) {
+    Message.error(e.message || '蒙版应用失败')
+  } finally {
+    showMaskEditor.value = false
   }
 }
 

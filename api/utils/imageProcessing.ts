@@ -173,16 +173,21 @@ export async function removeBackground(
     raw: { width, height, channels: 1 },
   }).png().toFile(maskPath)
 
-  const rgbaBuffer = await image
+  const rgbBuffer = await image
     .clone()
-    .ensureAlpha()
-    .joinChannel(maskBuffer, {
-      raw: { width, height, channels: 1 },
-    })
+    .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true })
 
-  await sharp(rgbaBuffer.data, {
+  const rgbaBuffer = Buffer.alloc(width * height * 4)
+  for (let i = 0; i < width * height; i++) {
+    rgbaBuffer[i * 4] = rgbBuffer.data[i * 3]
+    rgbaBuffer[i * 4 + 1] = rgbBuffer.data[i * 3 + 1]
+    rgbaBuffer[i * 4 + 2] = rgbBuffer.data[i * 3 + 2]
+    rgbaBuffer[i * 4 + 3] = maskBuffer[i]
+  }
+
+  await sharp(rgbaBuffer, {
     raw: {
       width,
       height,
@@ -466,17 +471,28 @@ export async function applyMaskToImage(
   const width = metadata.width || 0
   const height = metadata.height || 0
 
+  const rgbBuffer = await image
+    .clone()
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+
   const maskBuffer = await sharp(maskPath)
     .resize(width, height, { fit: 'fill' })
     .raw()
     .toBuffer()
 
-  await image
-    .clone()
-    .ensureAlpha()
-    .joinChannel(maskBuffer, {
-      raw: { width, height, channels: 1 },
-    })
+  const rgbaBuffer = Buffer.alloc(width * height * 4)
+  for (let i = 0; i < width * height; i++) {
+    rgbaBuffer[i * 4] = rgbBuffer.data[i * 3]
+    rgbaBuffer[i * 4 + 1] = rgbBuffer.data[i * 3 + 1]
+    rgbaBuffer[i * 4 + 2] = rgbBuffer.data[i * 3 + 2]
+    rgbaBuffer[i * 4 + 3] = maskBuffer[i]
+  }
+
+  await sharp(rgbaBuffer, {
+    raw: { width, height, channels: 4 },
+  })
     .png()
     .toFile(outputPath)
 

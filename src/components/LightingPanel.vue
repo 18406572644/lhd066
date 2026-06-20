@@ -199,8 +199,12 @@ async function analyzeLighting() {
 }
 
 async function autoMatchLighting() {
-  if (!props.designImageUrl || !props.templateImageUrl) {
-    Message.warning('请先上传设计图和选择模板')
+  if (!props.templateImageUrl) {
+    Message.warning('请先选择模板')
+    return
+  }
+  if (!props.designImageUrl) {
+    Message.warning('请先上传设计图')
     return
   }
 
@@ -224,8 +228,12 @@ function onManualChange() {
 }
 
 async function applyManualLighting() {
-  if (!props.designImageUrl || !props.templateImageUrl) {
-    Message.warning('请先上传设计图和选择模板')
+  if (!props.templateImageUrl) {
+    Message.warning('请先选择模板')
+    return
+  }
+  if (!props.designImageUrl) {
+    Message.warning('请先上传设计图')
     return
   }
 
@@ -238,15 +246,19 @@ async function applyManualLighting() {
   }
 }
 
-watch(() => props.templateImageUrl, () => {
-  if (props.templateImageUrl && imageStore.lightingEnabled) {
-    analyzeLighting()
+watch(() => props.templateImageUrl, (newVal) => {
+  if (newVal && imageStore.lightingEnabled) {
+    imageStore.analyzeLighting(newVal, true).catch((e) => {
+      console.warn('Failed to analyze template lighting:', e.message)
+    })
   }
 }, { immediate: true })
 
-watch(() => props.designImageUrl, () => {
-  if (props.designImageUrl && imageStore.lightingEnabled) {
-    analyzeLighting()
+watch(() => props.designImageUrl, (newVal) => {
+  if (newVal && imageStore.lightingEnabled) {
+    imageStore.analyzeLighting(newVal, false).catch((e) => {
+      console.warn('Failed to analyze design lighting:', e.message)
+    })
   }
 }, { immediate: true })
 </script>

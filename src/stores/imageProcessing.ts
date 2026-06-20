@@ -117,8 +117,11 @@ export const useImageProcessingStore = defineStore('imageProcessing', () => {
     backgroundParams.value = null
     backgroundReplaceEnabled.value = false
     lightingEnabled.value = true
-    templateLightingStats.value = null
     designLightingStats.value = null
+  }
+
+  function resetTemplateStats() {
+    templateLightingStats.value = null
   }
 
   async function removeBackground(imageUrl: string) {
@@ -182,6 +185,21 @@ export const useImageProcessingStore = defineStore('imageProcessing', () => {
       return result
     } finally {
       isProcessingMask.value = false
+    }
+  }
+
+  async function applyMaskToCurrent() {
+    if (!originalImageUrl.value || !maskCurrentUrl.value) return
+    isApplyingMask.value = true
+    try {
+      const result = await post<{ processedImageUrl: string }>('/image-processing/apply-mask', {
+        imageUrl: originalImageUrl.value,
+        maskUrl: maskCurrentUrl.value,
+      })
+      processedImageUrl.value = result.processedImageUrl
+      return result
+    } finally {
+      isApplyingMask.value = false
     }
   }
 
@@ -350,7 +368,9 @@ export const useImageProcessingStore = defineStore('imageProcessing', () => {
     hasMask,
     setOriginalImage,
     resetAll,
+    resetTemplateStats,
     removeBackground,
+    applyMaskToCurrent,
     applyBrushStrokes,
     applyFeather,
     applyThreshold,
