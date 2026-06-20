@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1600" width="1200" height="1600">
+  <defs>
+    <linearGradient id="packBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8f9fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#dee2e6;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="boxSide" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#e9ecef;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ced4da;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="1600" fill="url(#packBg)"/>
+  <g>
+    <polygon points="300,200 900,120 900,880 300,960" fill="#ffffff"/>
+    <polygon points="900,120 1020,200 1020,960 900,880" fill="url(#boxSide)"/>
+    <polygon points="300,200 420,120 1020,200 900,280" fill="#f8f9fa"/>
+    <rect x="360" y="260" width="480" height="180" rx="4" fill="#e9ecef"/>
+    <rect x="360" y="460" width="280" height="36" rx="3" fill="#dee2e6"/>
+    <rect x="360" y="510" width="400" height="28" rx="2" fill="#f1f3f5"/>
+    <rect x="360" y="550" width="360" height="28" rx="2" fill="#f8f9fa"/>
+    <rect x="360" y="620" width="480" height="160" rx="6" fill="#e9ecef"/>
+    <rect x="360" y="800" width="480" height="80" rx="4" fill="#f1f3f5"/>
+    <rect x="930" y="300" width="60" height="12" rx="2" fill="#adb5bd"/>
+    <rect x="930" y="330" width="60" height="8" rx="2" fill="#ced4da"/>
+    <rect x="930" y="350" width="48" height="6" rx="2" fill="#dee2e6"/>
+    <polygon points="300,200 330,180 330,940 300,960" fill="#dee2e6" opacity="0.6"/>
+    <rect x="360" y="920" width="300" height="28" rx="4" fill="#ced4da"/>
+  </g>
+</svg>
