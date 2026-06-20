@@ -18,7 +18,8 @@ fs.mkdirSync(path.join(uploadsDir, 'results'), { recursive: true })
 const dbPath = path.join(dataDir, 'mockup.db')
 const db = new Database(dbPath)
 
-db.pragma('journal_mode = WAL')
+const journalMode = process.env.SQLITE_JOURNAL_MODE || 'WAL'
+db.pragma(`journal_mode = ${journalMode}`)
 db.pragma('foreign_keys = ON')
 
 db.exec(`
