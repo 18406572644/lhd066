@@ -2,14 +2,16 @@
   <div class="version-manager">
     <div class="vm-header">
       <div class="section-title">版本管理</div>
-      <a-button
-        type="primary"
-        size="small"
-        @click="onCreateNewVersion"
-        :disabled="!canEdit"
-      >
-        保存为新版本
-      </a-button>
+      <a-tooltip :content="canEdit ? '' : '您没有权限编辑此模板'" placement="top">
+        <a-button
+          type="primary"
+          size="small"
+          @click="onCreateNewVersion"
+          :disabled="!canEdit"
+        >
+          保存为新版本
+        </a-button>
+      </a-tooltip>
     </div>
 
     <a-spin :loading="templateStore.versionsLoading" dot>

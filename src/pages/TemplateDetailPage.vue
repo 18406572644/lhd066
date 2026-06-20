@@ -197,6 +197,13 @@ function getPermissionLabel(p: string) {
 }
 
 onMounted(async () => {
+  if (authStore.token && !authStore.user) {
+    try {
+      await authStore.fetchMe()
+    } catch {
+      // ignore
+    }
+  }
   await templateStore.fetchTemplate(templateId.value)
 })
 

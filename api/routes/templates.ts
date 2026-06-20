@@ -167,6 +167,27 @@ router.post('/', authMiddleware, templateUpload.single('image'), async (req: Req
       'SELECT tg.name FROM template_tags tt JOIN tags tg ON tt.tag_id = tg.id WHERE tt.template_id = ?'
     ).all(templateId) as any[]
 
+    db.prepare(
+      `INSERT INTO template_versions
+       (template_id, version_number, version_label, description, name, category, width, height,
+        image_url, fit_x, fit_y, fit_width, fit_height, permission, is_stable, user_id)
+       VALUES (?, 1, 'v1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
+    ).run(
+      templateId,
+      template.description || '初始版本',
+      template.name,
+      template.category,
+      template.width,
+      template.height,
+      template.image_url,
+      template.fit_x,
+      template.fit_y,
+      template.fit_width,
+      template.fit_height,
+      template.permission,
+      req.user!.id
+    )
+
     let qualityReport = null
     try {
       qualityReport = await runQualityInspection(Number(templateId))
